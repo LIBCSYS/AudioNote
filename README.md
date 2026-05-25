@@ -17,7 +17,7 @@
 
 ---
 
-*A [TheRatsAsses](https://theratsasses.com) Music Release — dba [LibCSystems](https://libcsys.com)*
+*A [TheRatsAsses](https://theratsasses.com) Music Release — dba [LIBCSystems LLC](https://libcsys.com)*
 
 </div>
 
@@ -191,6 +191,6 @@ MIT — do whatever you want with it.
 
 <img src="logo-small.png" width="48" alt="AudioNote">
 
-*A [TheRatsAsses](https://theratsasses.com) Music Release — dba LibCSystems · © 2026 LibCSystems LLC*
+*A [TheRatsAsses](https://theratsasses.com) Music Release — dba [LIBCSystems LLC](https://libcsys.com) · © 2026 LIBCSystems LLC*
 
 </div>
