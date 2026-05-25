@@ -17,7 +17,7 @@
 
 ---
 
-*A [TheRatsAsses](https://theratsasses.com) Music Release — dba [LibCSystems](https://libcsystems.com)*
+*A [TheRatsAsses](https://theratsasses.com) Music Release — dba [LibCSystems](https://libcsys.com)*
 
 </div>
 
