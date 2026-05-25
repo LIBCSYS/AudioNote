@@ -50,10 +50,16 @@ function esc(str) {
 // ── SONG LIST ──────────────────────────────────────────────
 
 async function loadSongs() {
-  if (WEB_MODE) return; // web mode populates via folder picker
-  const res = await fetch('/api/songs');
-  state.songs = await res.json();
-  applyFilters();
+  if (WEB_MODE) return;
+  try {
+    const res = await fetch('/api/songs');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    state.songs = await res.json();
+    applyFilters();
+  } catch (e) {
+    console.error('[AudioNote] Failed to load songs:', e);
+    songList.innerHTML = '<li style="padding:12px 16px;font-style:italic;color:var(--danger)">Could not load library — is the server running?</li>';
+  }
 }
 
 function visibleSongs() {
@@ -64,8 +70,12 @@ function renderSongList(songs) {
   songCount.textContent = `${songs.length} track${songs.length !== 1 ? 's' : ''}`;
   songList.innerHTML = '';
   if (!songs.length) {
-    const msg = state.notedOnly ? 'No noted tracks yet' : (WEB_MODE ? 'Click Choose Folder to load your MP3s' : 'No tracks found — click Rescan Library');
-    songList.innerHTML = `<li class="muted" style="padding:12px 16px;font-style:italic">${msg}</li>`;
+    const msg = state.notedOnly
+      ? 'No noted tracks yet'
+      : (WEB_MODE
+          ? 'Click <strong>🎵 Add Files</strong> to load your MP3s'
+          : 'Add a music folder in the scan panel, then click <strong>↻ Scan Now</strong>');
+    songList.innerHTML = `<li class="muted" style="padding:12px 16px;font-style:italic;line-height:1.5">${msg}</li>`;
     return;
   }
   for (const s of songs) {
@@ -75,7 +85,7 @@ function renderSongList(songs) {
     const meta = [s.artist, s.album].filter(Boolean).join(' · ');
     const dur  = s.duration_sec ? `<span class="song-duration">${fmt(s.duration_sec)}</span>` : '';
     li.innerHTML = `
-      <div class="song-item-title">${esc(s.title)}${s.has_note ? '<span class="note-flag">📝</span>' : ''}</div>
+      <div class="song-item-title">${esc(s.title)}${s.has_note ? '<span class="note-flag" aria-label="has note">📝</span>' : ''}</div>
       <div class="song-item-meta">${esc(meta)}${dur}</div>
     `;
     li.addEventListener('click', () => selectSong(s));
@@ -98,7 +108,12 @@ async function selectSong(song) {
   if (WEB_MODE) {
     const file = fileHandles.get(song.id);
     if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
-    audio.src = file ? URL.createObjectURL(file) : '';
+    if (file) {
+      audio.src = URL.createObjectURL(file);
+    } else {
+      audio.src = '';
+      $('np-meta').textContent = '⚠ File not loaded — click Add Files to reload your folder';
+    }
   } else {
     audio.src = `/audio/${song.id}`;
   }
@@ -462,6 +477,31 @@ async function loadDrives() {
 }
 
 scanNowBtn.addEventListener('click', async () => {
+  // If no folders configured yet, try to auto-add whatever is in the input first
+  const currentDirs = await fetch('/api/scan-dirs').then(r => r.json()).catch(() => []);
+  if (!currentDirs.length) {
+    const pending = folderInput.value.trim();
+    if (!pending) {
+      folderError.textContent = 'Add a music folder path first, then click Scan Now';
+      folderInput.focus();
+      return;
+    }
+    const addRes = await fetch('/api/scan-dirs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dirpath: pending }),
+    });
+    if (!addRes.ok) {
+      const d = await addRes.json();
+      folderError.textContent = d.error || 'Could not add folder';
+      return;
+    }
+    folderInput.value = '';
+    folderError.textContent = '';
+    await loadFolders();
+    await loadDrives();
+  }
+
   scanNowBtn.textContent = '↻ Scanning...';
   scanNowBtn.disabled = true;
   try {
@@ -471,6 +511,16 @@ scanNowBtn.addEventListener('click', async () => {
     state.songs = data.songs;
     applyFilters();
     scanNowBtn.textContent = `✓ ${data.added} added, ${data.removed} removed`;
+    // Auto-close the scan panel if we found songs
+    if (data.total > 0) {
+      setTimeout(() => {
+        scanPanel.classList.add('hidden');
+        rescanBtn.textContent = '↻ Scan Library';
+        scanNowBtn.textContent = '↻ Scan Now';
+        scanNowBtn.disabled = false;
+      }, 1800);
+      return;
+    }
   } catch (err) {
     scanNowBtn.textContent = '↻ Scan failed';
     alert('Scan failed: ' + (err.message || 'unknown error'));
@@ -661,9 +711,11 @@ if (openFileInput) {
     openFileInput.value = '';
 
     for (const file of files) {
-      const blobUrl  = URL.createObjectURL(file);
       const duration = await getDuration(file);
       const title    = file.name.replace(/\.[^.]+$/, '');
+
+      if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+      const blobUrl = URL.createObjectURL(file);
 
       // Synthetic entry — not saved to catalog; use negative IDs to avoid collision
       const song = {
@@ -674,7 +726,6 @@ if (openFileInput) {
         album:  '',
         duration_sec: duration,
         has_note: 0,
-        _blobUrl: blobUrl,
       };
 
       // Play the first file; subsequent files could be queued in a future feature

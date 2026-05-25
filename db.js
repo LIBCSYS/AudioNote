@@ -12,7 +12,7 @@ try {
 
 const db = new DatabaseSync(path.join(__dirname, 'audionote.db'));
 
-db.exec('PRAGMA journal_mode = WAL;');
+try { db.exec('PRAGMA journal_mode = WAL;'); } catch {}
 db.exec('PRAGMA foreign_keys = ON;');
 
 // Migrations — safe to run on every start

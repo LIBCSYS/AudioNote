@@ -14,10 +14,10 @@ try {
 
 const app        = express();
 const PORT       = process.env.PORT || 2600;
-const VERSION    = '0.00.4';
+const VERSION    = '0.00.5';
 const MUSIC_ROOT = process.env.MUSIC_ROOT || path.join(__dirname, '..');
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Traffic logging — must be before static so every hit is captured
 const insertVisit = db.prepare(
@@ -51,7 +51,7 @@ function scanDir(dir, results = []) {
     if (item.name.startsWith('.') || item.name === 'node_modules') continue;
     const full = path.join(dir, item.name);
     if (item.isDirectory()) {
-      if (full !== __dirname) scanDir(full, results);
+      if (path.normalize(full).toLowerCase() !== path.normalize(__dirname).toLowerCase()) scanDir(full, results);
     } else if (item.isFile() && item.name.toLowerCase().endsWith('.mp3')) {
       results.push(full);
     }
@@ -78,9 +78,10 @@ app.get('/api/scan-dirs', (req, res) => {
 app.post('/api/scan-dirs', (req, res) => {
   const { dirpath, label } = req.body;
   if (!dirpath) return res.status(400).json({ error: 'dirpath required' });
-  if (!fs.existsSync(dirpath)) return res.status(400).json({ error: 'Directory not found' });
+  const normalizedPath = path.normalize(dirpath.trim());
+  if (!fs.existsSync(normalizedPath)) return res.status(400).json({ error: `Directory not found: ${normalizedPath}` });
   try {
-    const result = db.prepare('INSERT INTO scan_dirs (dirpath, label) VALUES (?, ?)').run(dirpath.trim(), label || '');
+    const result = db.prepare('INSERT INTO scan_dirs (dirpath, label) VALUES (?, ?)').run(normalizedPath, label || '');
     res.json(db.prepare('SELECT * FROM scan_dirs WHERE id = ?').get(result.lastInsertRowid));
   } catch {
     res.status(409).json({ error: 'Directory already added' });
@@ -92,6 +93,15 @@ app.delete('/api/scan-dirs/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+const SONGS_QUERY = `
+  SELECT s.*,
+    CASE WHEN sn.note_text IS NOT NULL AND sn.note_text != '' THEN 1 ELSE 0 END AS has_note
+  FROM songs s
+  LEFT JOIN song_notes sn ON sn.song_id = s.id
+  WHERE s.deleted_at IS NULL
+  ORDER BY s.artist, s.title
+`;
+
 // Rescan all configured directories (falls back to parent dir if none configured)
 app.post('/api/rescan', async (req, res) => {
   try {
@@ -102,12 +112,15 @@ app.post('/api/rescan', async (req, res) => {
     const insert = db.prepare(
       'INSERT OR IGNORE INTO songs (filepath, title, artist, album, duration_sec) VALUES (?, ?, ?, ?, ?)'
     );
+    const restore = db.prepare(
+      "UPDATE songs SET deleted_at = NULL, title=?, artist=?, album=?, duration_sec=? WHERE id=?"
+    );
     let added = 0;
     for (const fp of files) {
-      const exists = db.prepare('SELECT id FROM songs WHERE filepath = ?').get(fp);
-      if (!exists) {
-        let title = path.basename(fp, '.mp3');
-        let artist = '', album = '', duration_sec = 0;
+      const existing = db.prepare('SELECT id, deleted_at FROM songs WHERE filepath = ?').get(fp);
+      let title = path.basename(fp, '.mp3');
+      let artist = '', album = '', duration_sec = 0;
+      if (mm) {
         try {
           const meta = await mm.parseFile(fp, { duration: true, skipCovers: true });
           title        = meta.common.title  || title;
@@ -115,7 +128,13 @@ app.post('/api/rescan', async (req, res) => {
           album        = meta.common.album  || '';
           duration_sec = meta.format.duration || 0;
         } catch {}
+      }
+      if (!existing) {
         insert.run(fp, title, artist, album, duration_sec);
+        added++;
+      } else if (existing.deleted_at) {
+        // File is back on disk — restore it
+        restore.run(title, artist, album, duration_sec, existing.id);
         added++;
       }
     }
@@ -132,15 +151,6 @@ app.post('/api/rescan', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-const SONGS_QUERY = `
-  SELECT s.*,
-    CASE WHEN sn.note_text IS NOT NULL AND sn.note_text != '' THEN 1 ELSE 0 END AS has_note
-  FROM songs s
-  LEFT JOIN song_notes sn ON sn.song_id = s.id
-  WHERE s.deleted_at IS NULL
-  ORDER BY s.artist, s.title
-`;
 
 app.get('/api/songs', (req, res) => {
   res.json(db.prepare(SONGS_QUERY).all());
@@ -423,6 +433,26 @@ app.get('/api/export/csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="audionote-export.csv"');
   res.send('﻿' + csv); // BOM so Excel auto-detects UTF-8
+});
+
+// ── ANALYTICS ────────────────────────────────────────────
+
+app.get('/api/analytics', (req, res) => {
+  const total    = db.prepare("SELECT COUNT(*) AS n FROM visits").get().n;
+  const today    = db.prepare("SELECT COUNT(*) AS n FROM visits WHERE ts >= date('now')").get().n;
+  const week     = db.prepare("SELECT COUNT(*) AS n FROM visits WHERE ts >= date('now','-7 days')").get().n;
+  const avgMs    = db.prepare("SELECT ROUND(AVG(ms),1) AS n FROM visits WHERE ts >= date('now','-7 days')").get().n;
+  const uniqIPs  = db.prepare("SELECT COUNT(DISTINCT ip) AS n FROM visits WHERE ip != ''").get().n;
+  const topPaths = db.prepare(
+    "SELECT path, COUNT(*) AS hits FROM visits GROUP BY path ORDER BY hits DESC LIMIT 15"
+  ).all();
+  const recent   = db.prepare(
+    "SELECT ts, method, path, status, ip, ms FROM visits ORDER BY id DESC LIMIT 50"
+  ).all();
+  const byDay    = db.prepare(
+    "SELECT date(ts) AS day, COUNT(*) AS hits FROM visits WHERE ts >= date('now','-29 days') GROUP BY day ORDER BY day"
+  ).all();
+  res.json({ total, today, week, avgMs, uniqIPs, topPaths, recent, byDay });
 });
 
 app.patch('/api/timestamps/:id', (req, res) => {

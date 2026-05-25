@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AudioNote — Analytics</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f2f2f8; --card: #fff; --border: #d0d0e4;
+      --accent: #5c4ee8; --text: #1a1a30; --muted: #7070a0;
+      --green: #16a34a; --red: #d93247;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; padding: 24px; }
+    h1 { font-size: 1.5rem; font-weight: 900; color: var(--accent); margin-bottom: 4px; }
+    .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+    .back { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; display: inline-block; margin-bottom: 16px; }
+    .back:hover { text-decoration: underline; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 700; margin-bottom: 6px; }
+    .stat-value { font-size: 2rem; font-weight: 900; color: var(--accent); line-height: 1; }
+    .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    .section { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+    .section h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 14px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 4px 8px 8px 0; border-bottom: 1px solid var(--border); }
+    td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .path { font-family: monospace; color: var(--accent); }
+    .status-ok { color: var(--green); font-weight: 700; }
+    .status-err { color: var(--red); font-weight: 700; }
+    .ip { color: var(--muted); font-family: monospace; font-size: 11px; }
+    .ts { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .ms { text-align: right; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+    .bar-chart { display: flex; flex-direction: column; gap: 6px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; }
+    .bar-label { font-family: monospace; font-size: 11px; color: var(--text); min-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { flex: 1; background: var(--bg); border-radius: 3px; height: 10px; overflow: hidden; }
+    .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; opacity: .8; }
+    .bar-val { font-size: 11px; color: var(--muted); min-width: 32px; text-align: right; }
+
+    .sparkline { display: flex; align-items: flex-end; gap: 3px; height: 60px; padding-top: 8px; }
+    .spark-bar { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-width: 2px; opacity: .7; transition: opacity .1s; cursor: default; }
+    .spark-bar:hover { opacity: 1; }
+    .spark-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+    @media (max-width: 600px) {
+      body { padding: 12px; }
+      .bar-label { min-width: 120px; }
+    }
+  </style>
+</head>
+<body>
+<a href="/" class="back">← Back to AudioNote</a>
+<h1>Analytics</h1>
+<p class="subtitle" id="subtitle">Loading...</p>
+
+<div class="stats-grid" id="stats-grid"></div>
+
+<div class="section">
+  <h2>Daily visits — last 30 days</h2>
+  <div class="sparkline" id="sparkline"></div>
+  <div class="spark-labels" id="spark-labels"></div>
+</div>
+
+<div class="section">
+  <h2>Top paths</h2>
+  <div class="bar-chart" id="top-paths"></div>
+</div>
+
+<div class="section">
+  <h2>Recent requests</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>IP</th><th class="ms">ms</th></tr></thead>
+    <tbody id="recent-tbody"></tbody>
+  </table>
+</div>
+
+<script>
+(async () => {
+  const r = await fetch('/api/analytics');
+  const d = await r.json();
+
+  document.getElementById('subtitle').textContent =
+    `${d.total.toLocaleString()} total requests · ${d.uniqIPs.toLocaleString()} unique IPs · updated now`;
+
+  const statsGrid = document.getElementById('stats-grid');
+  const stats = [
+    { label: 'Total hits', value: d.total.toLocaleString(), sub: 'all time' },
+    { label: 'Today', value: d.today.toLocaleString(), sub: 'requests' },
+    { label: 'This week', value: d.week.toLocaleString(), sub: 'requests' },
+    { label: 'Unique IPs', value: d.uniqIPs.toLocaleString(), sub: 'all time' },
+    { label: 'Avg response', value: d.avgMs ? `${d.avgMs}ms` : '—', sub: 'last 7 days' },
+  ];
+  statsGrid.innerHTML = stats.map(s => `
+    <div class="stat-card">
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-value">${s.value}</div>
+      <div class="stat-sub">${s.sub}</div>
+    </div>
+  `).join('');
+
+  // Sparkline
+  const maxHits = Math.max(...d.byDay.map(b => b.hits), 1);
+  const sparkEl = document.getElementById('sparkline');
+  sparkEl.innerHTML = d.byDay.map(b => {
+    const pct = Math.round((b.hits / maxHits) * 100);
+    return `<div class="spark-bar" style="height:${Math.max(pct,3)}%" title="${b.day}: ${b.hits} hits"></div>`;
+  }).join('');
+  const labelsEl = document.getElementById('spark-labels');
+  if (d.byDay.length >= 2) {
+    labelsEl.innerHTML = `<span>${d.byDay[0].day}</span><span>${d.byDay[d.byDay.length - 1].day}</span>`;
+  }
+
+  // Top paths bar chart
+  const maxPath = Math.max(...d.topPaths.map(p => p.hits), 1);
+  document.getElementById('top-paths').innerHTML = d.topPaths.map(p => `
+    <div class="bar-row">
+      <span class="bar-label" title="${p.path}">${p.path}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(p.hits/maxPath*100)}%"></div></div>
+      <span class="bar-val">${p.hits}</span>
+    </div>
+  `).join('');
+
+  // Recent table
+  const tbody = document.getElementById('recent-tbody');
+  tbody.innerHTML = d.recent.map(v => {
+    const statusCls = v.status >= 400 ? 'status-err' : 'status-ok';
+    return `<tr>
+      <td class="ts">${v.ts}</td>
+      <td>${v.method}</td>
+      <td class="path">${v.path}</td>
+      <td class="${statusCls}">${v.status}</td>
+      <td class="ip">${v.ip}</td>
+      <td class="ms">${v.ms}</td>
+    </tr>`;
+  }).join('');
+})();
+</script>
+</body>
+</html>
