@@ -93,12 +93,12 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .folder-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px; padding: 1px 4px; border-radius: 3px; transition: color .1s; flex-shrink: 0; }
 .folder-del:hover { color: var(--danger); }
 
-#drives-list { display: flex; flex-direction: column; gap: 4px; }
-.drive-empty { font-size: 11px; color: var(--muted); font-style: italic; margin: 0; }
-.drive-row { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 5px 6px; border-radius: 6px; transition: background .12s; }
-.drive-row:hover { background: rgba(92,78,232,.08); }
-.drive-row input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
-.drive-label { font-family: monospace; font-size: 13px; font-weight: 600; color: var(--text); }
+.drives-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+.drives-hint-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); white-space: nowrap; }
+#drives-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.drive-chip { background: var(--bg); border: 1px solid var(--border); color: var(--muted); font-family: monospace; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 5px; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+.drive-chip:hover { border-color: var(--accent); color: var(--accent); }
+.drive-chip.active { border-color: var(--accent); background: rgba(92,78,232,.12); color: var(--accent); }
 .btn-open-file { text-align: center; }
 
 .folders-add { display: flex; gap: 5px; }

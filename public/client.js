@@ -26,10 +26,12 @@ const rescanBtn   = $('rescan-btn');
 const notedFilter = $('noted-filter');
 const renameBtn   = $('rename-btn');
 const deleteBtn   = $('delete-btn');
-const scanPanel   = $('scan-panel');
-const foldersList = $('folders-list');
-const drivesList  = $('drives-list');
-const folderInput = $('folder-input');
+const scanPanel    = $('scan-panel');
+const foldersList  = $('folders-list');
+const drivesHint   = $('drives-hint');
+const drivesList   = $('drives-list');
+const foldersSection = $('folders-section');
+const folderInput  = $('folder-input');
 const folderAddBtn = $('folder-add-btn');
 const folderError  = $('folder-error');
 const scanNowBtn   = $('scan-now-btn');
@@ -426,62 +428,31 @@ rescanBtn.addEventListener('click', async () => {
 });
 
 async function loadDrives() {
-  const [drives, scanDirs] = await Promise.all([
-    fetch('/api/drives').then(r => r.json()),
-    fetch('/api/scan-dirs').then(r => r.json()),
-  ]);
+  let drives = [];
+  try { drives = await fetch('/api/drives').then(r => r.json()); } catch {}
   drivesList.innerHTML = '';
   if (!drives.length) {
-    drivesList.innerHTML = '<p class="drive-empty">No drives detected</p>';
+    if (drivesHint) drivesHint.classList.add('hidden');
     return;
   }
+  if (drivesHint) drivesHint.classList.remove('hidden');
+  const scanDirs = await fetch('/api/scan-dirs').then(r => r.json()).catch(() => []);
   for (const drive of drives) {
     const normDrive = drive.replace(/\\/g, '/').toUpperCase().replace(/\/$/, '');
-    const matched   = scanDirs.find(d =>
+    const isTracked = scanDirs.some(d =>
       d.dirpath.replace(/\\/g, '/').toUpperCase().replace(/\/$/, '') === normDrive
     );
-
-    const row = document.createElement('label');
-    row.className = 'drive-row';
-
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!matched;
-    if (matched) cb.dataset.dirId = matched.id;
-
-    const lbl = document.createElement('span');
-    lbl.className = 'drive-label';
-    lbl.textContent = drive.replace(/\\$/, '');
-
-    row.appendChild(cb);
-    row.appendChild(lbl);
-    drivesList.appendChild(row);
-
-    cb.addEventListener('change', async () => {
-      if (cb.checked) {
-        const r = await fetch('/api/scan-dirs', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ dirpath: drive }),
-        });
-        if (r.ok) {
-          const dir = await r.json();
-          cb.dataset.dirId = dir.id;
-          loadFolders();
-        } else {
-          cb.checked = false;
-          const err = await r.json();
-          folderError.textContent = err.error || 'Could not add drive';
-        }
-      } else {
-        const id = cb.dataset.dirId;
-        if (id) {
-          await fetch(`/api/scan-dirs/${id}`, { method: 'DELETE' });
-          delete cb.dataset.dirId;
-          loadFolders();
-        }
-      }
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'drive-chip' + (isTracked ? ' active' : '');
+    chip.title = isTracked ? `${drive} — already in scan list` : `Click to use ${drive}`;
+    chip.textContent = drive.replace(/\\$/, ''); // "X:" not "X:\"
+    chip.addEventListener('click', () => {
+      folderInput.value = drive;
+      folderInput.focus();
+      folderInput.setSelectionRange(folderInput.value.length, folderInput.value.length);
     });
+    drivesList.appendChild(chip);
   }
 }
 
@@ -518,13 +489,9 @@ document.addEventListener('keydown', e => {
 // ── SCAN FOLDERS ─────────────────────────────────────────
 
 async function loadFolders() {
-  const res  = await fetch('/api/scan-dirs');
-  const dirs = await res.json();
+  const dirs = await fetch('/api/scan-dirs').then(r => r.json()).catch(() => []);
   foldersList.innerHTML = '';
-  if (!dirs.length) {
-    foldersList.innerHTML = '<li style="color:var(--muted);font-size:11px;padding:3px 2px;font-style:italic">None — using default folder</li>';
-    return;
-  }
+  if (foldersSection) foldersSection.style.display = dirs.length ? '' : 'none';
   for (const d of dirs) {
     const li = document.createElement('li');
     li.innerHTML = `<span class="folder-path" title="${esc(d.dirpath)}">${esc(d.dirpath)}</span><button class="folder-del" data-id="${d.id}" title="Remove">✕</button>`;
