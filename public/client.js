@@ -638,6 +638,8 @@ if (WEB_MODE) {
   rescanBtn.textContent = '🎵 Add Files';
   scanPanel.classList.add('hidden');
   renameBtn.classList.add('hidden');
+  const homeAddBtn = $('home-add-btn');
+  if (homeAddBtn) homeAddBtn.addEventListener('click', pickAndScanDirectory);
 } else {
   loadSongs();
   loadFolders();
