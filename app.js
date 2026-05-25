@@ -278,8 +278,11 @@ app.get('/audio/:id', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\nAudioNote v1.0`);
-  console.log(`Listening : http://0.0.0.0:${PORT}`);
-  console.log(`Music root: ${MUSIC_ROOT}`);
-  console.log(`Network   : http://100.111.177.18:${PORT}\n`);
+  const os   = require('os');
+  const nets = Object.values(os.networkInterfaces()).flat().filter(n => n.family === 'IPv4' && !n.internal);
+  const ip   = nets.length ? nets[0].address : 'YOUR_IP';
+  console.log(`\nAudioNote v0.0.00.1`);
+  console.log(`Local     : http://localhost:${PORT}`);
+  console.log(`Network   : http://${ip}:${PORT}`);
+  console.log(`Music root: ${MUSIC_ROOT}\n`);
 });
