@@ -414,16 +414,21 @@ function showImportToast(type, msg) {
 
 // ── RESCAN PANEL ─────────────────────────────────────────
 
-let scanPanelOpen = false;
+async function openScanPanel() {
+  scanPanel.classList.remove('hidden');
+  rescanBtn.textContent = '↑ Close';
+  await loadFolders();
+  await loadDrives();
+}
 
 rescanBtn.addEventListener('click', async () => {
   if (WEB_MODE) { pickAndScanDirectory(); return; }
-  scanPanelOpen = !scanPanelOpen;
-  scanPanel.classList.toggle('hidden', !scanPanelOpen);
-  rescanBtn.textContent = scanPanelOpen ? '↑ Close' : '↻ Scan Library';
-  if (scanPanelOpen) {
-    await loadFolders();
-    await loadDrives();
+  const isOpen = !scanPanel.classList.contains('hidden');
+  if (isOpen) {
+    scanPanel.classList.add('hidden');
+    rescanBtn.textContent = '↻ Scan Library';
+  } else {
+    await openScanPanel();
   }
 });
 
@@ -656,8 +661,12 @@ chatInput.addEventListener('keydown', e => {
 
 // ── PLAY A FILE (local mode) ──────────────────────────────
 
-if (openFileBtn) {
-  openFileBtn.addEventListener('click', () => openFileInput && openFileInput.click());
+if (openFileBtn && openFileInput) {
+  openFileBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openFileInput.click();
+  });
 }
 
 if (openFileInput) {
@@ -718,7 +727,9 @@ if (WEB_MODE) {
   const homeAddBtn = $('home-add-btn');
   if (homeAddBtn) homeAddBtn.style.display = 'none';
   const homeNote = document.querySelector('.home-browser-note');
-  if (homeNote) homeNote.textContent = 'Click ↻ Scan Library or 📁 Play a File to get started';
-  loadSongs();
-  loadFolders();
+  if (homeNote) homeNote.textContent = 'Add your music folder below, then click ↻ Scan Now';
+  // Load songs; auto-open the scan panel when the library is empty
+  loadSongs().then(() => {
+    if (!state.songs.length) openScanPanel();
+  });
 }
