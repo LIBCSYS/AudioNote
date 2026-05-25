@@ -7,7 +7,7 @@ const db      = require('./db');
 
 const app        = express();
 const PORT       = process.env.PORT || 3005;
-const MUSIC_ROOT = path.join(__dirname, '..');
+const MUSIC_ROOT = process.env.MUSIC_ROOT || path.join(__dirname, '..');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -153,6 +153,7 @@ app.patch('/api/songs/:id/rename', (req, res) => {
 
   const song = db.prepare('SELECT * FROM songs WHERE id = ?').get(req.params.id);
   if (!song) return res.status(404).json({ error: 'Song not found' });
+  if (song.filepath.startsWith('web:')) return res.status(400).json({ error: 'Cannot rename a browser-local file from the server' });
 
   // Strip characters illegal in Windows/Mac filenames
   const safeName = newName.trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim();
@@ -277,11 +278,38 @@ app.get('/audio/:id', (req, res) => {
   }
 });
 
+// Web mode: upsert songs by filepath (no server filesystem access)
+app.post('/api/songs/web-upsert', (req, res) => {
+  const songs = req.body;
+  if (!Array.isArray(songs)) return res.status(400).json({ error: 'expected array' });
+  const result = [];
+  for (const s of songs) {
+    if (!s.filepath) continue;
+    const existing = db.prepare('SELECT * FROM songs WHERE filepath = ?').get(s.filepath);
+    if (existing) {
+      db.prepare('UPDATE songs SET title=?, artist=?, album=?, duration_sec=?, deleted_at=NULL WHERE id=?')
+        .run(s.title || existing.title, s.artist || '', s.album || '', s.duration_sec || 0, existing.id);
+      result.push({ ...existing, title: s.title || existing.title, artist: s.artist || '', album: s.album || '', duration_sec: s.duration_sec || 0, deleted_at: null, has_note: 0 });
+    } else {
+      const info = db.prepare('INSERT INTO songs (filepath, title, artist, album, duration_sec) VALUES (?, ?, ?, ?, ?)')
+        .run(s.filepath, s.title || 'Unknown', s.artist || '', s.album || '', s.duration_sec || 0);
+      result.push({ id: Number(info.lastInsertRowid), filepath: s.filepath, title: s.title || 'Unknown', artist: s.artist || '', album: s.album || '', duration_sec: s.duration_sec || 0, created_at: new Date().toISOString(), deleted_at: null, has_note: 0 });
+    }
+  }
+  // Refresh has_note for returned songs
+  for (const r of result) {
+    const n = db.prepare("SELECT note_text FROM song_notes WHERE song_id = ?").get(r.id);
+    r.has_note = (n && n.note_text) ? 1 : 0;
+  }
+  result.sort((a, b) => (a.artist || '').localeCompare(b.artist || '') || a.title.localeCompare(b.title));
+  res.json(result);
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   const os   = require('os');
   const nets = Object.values(os.networkInterfaces()).flat().filter(n => n.family === 'IPv4' && !n.internal);
   const ip   = nets.length ? nets[0].address : 'YOUR_IP';
-  console.log(`\nAudioNote v0.0.00.1`);
+  console.log(`\nAudioNote v0.00.2`);
   console.log(`Local     : http://localhost:${PORT}`);
   console.log(`Network   : http://${ip}:${PORT}`);
   console.log(`Music root: ${MUSIC_ROOT}\n`);
