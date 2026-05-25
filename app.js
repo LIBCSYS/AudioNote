@@ -6,7 +6,7 @@ const fs      = require('fs');
 const db      = require('./db');
 
 const app        = express();
-const PORT       = 3005;
+const PORT       = process.env.PORT || 3005;
 const MUSIC_ROOT = path.join(__dirname, '..');
 
 app.use(express.json());

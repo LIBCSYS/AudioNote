@@ -1,90 +1,130 @@
+<div align="center">
+
+<img src="logo.png" width="140" alt="AudioNote Logo">
+
 # AudioNote
 
-**Version 0.0.00.1** — *A TheRatsAsses Music Release, dba LibCSystems*
+**Local-first music catalog, annotation, and live timestamp tool**
 
-AudioNote is a local-first music catalog and annotation tool. Point it at a folder of MP3 files, and it gives you a clean browser interface to play tracks, write notes, and drop timestamped markers while you listen — all stored in a local SQLite database that never leaves your machine.
+[![Version](https://img.shields.io/badge/version-0.0.00.1-7b68ee?style=flat-square)](https://github.com/LIBCSYS/audionote/releases)
+[![Node.js](https://img.shields.io/badge/Node.js-22.5+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+[![SQLite](https://img.shields.io/badge/SQLite-built--in-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://nodejs.org/api/sqlite.html)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](#)
 
----
-
-## What It Does
-
-- **Catalogs** your MP3 library by scanning a folder recursively for audio files
-- **Reads ID3 metadata** — title, artist, album, and duration pulled directly from each file
-- **Plays tracks** in the browser with a full-featured audio player (seek, volume, progress)
-- **Song notes** — freetext notes per track, auto-saved as you type
-- **Timestamp markers** — hit the Mark button (or press `M`) while a track plays to drop a marker at the exact moment; add a label, click any marker to jump back to it
-- **Annotated filter** — sidebar flag (📝) on any noted track; one-click "Noted only" filter to get back to your work
-- **Rescan** — adds new files and prunes deleted ones from the catalog without touching your notes or markers
+[Features](#-features) · [Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Customization](#-customization) · [Roadmap](#-roadmap)
 
 ---
 
-## How It Works
+*A [TheRatsAsses](https://theratsasses.com) Music Release — dba [LibCSystems](https://libcsystems.com)*
 
-AudioNote runs as a Node.js/Express server on your local machine. On first run (and on each Rescan), it walks the **parent directory** of wherever the app lives, finds every `.mp3` file, reads its ID3 tags via `music-metadata`, and inserts new entries into a local SQLite database using Node's built-in `node:sqlite` module — no native compilation, no external database engine.
+</div>
 
-All notes and timestamp markers you create are written back to that same database. The database file (`audionote.db`) lives next to the app and is **yours** — it is excluded from this repository. Every installation starts with a clean, empty database.
+---
+
+## What is AudioNote?
+
+AudioNote is a **local-first** MP3 catalog and annotation tool. Point it at a folder of audio files, and it gives you a clean browser interface to play tracks, write notes, and drop **live timestamp markers** while you listen — all stored in a local SQLite database that never leaves your machine.
+
+It is not a streaming service. It does not sync to the cloud. It does not require an account. It is yours.
+
+---
+
+## ✨ Features
+
+| | |
+|---|---|
+| 🎵 **Catalog** | Recursively scans one or more folders for `.mp3` files, reads ID3 tags (title, artist, album, duration) |
+| ▶️ **Player** | Full-featured HTML5 audio player — seek, volume, progress bar — right in the browser |
+| ⏱ **Timestamp markers** | Press **Mark** (or hit `M`) while a track plays to pin the exact moment. Add a label after. Click any marker to jump back. |
+| 📝 **Song notes** | Freetext notes per track, auto-saved as you type |
+| 📁 **Multi-folder** | Add any number of scan folders; AudioNote remembers them across restarts. Rescan adds new files and soft-removes missing ones. |
+| 📝 **Annotated filter** | Tracks with notes get a 📝 flag in the sidebar. One-click **Noted only** filter. |
+| ✏️ **Rename on disk** | Rename the actual `.mp3` file from the player — no file manager needed |
+| 🗑 **Soft delete** | Remove a track from the library without touching the file. Notes and timestamps are preserved in the database forever. |
+| ⬇️ **CSV export** | Export your full catalog — notes and all timestamps — as a UTF-8 CSV ready for Excel or database import |
+| 🌐 **Network access** | Binds to `0.0.0.0`; accessible from any machine on your local network or VPN |
+
+---
+
+## 🚀 Quick Start
+
+### Requirements
+
+- **Node.js 22.5 or later** — AudioNote uses the built-in `node:sqlite` module (no external database required)
+
+### Install
+
+```bash
+git clone https://github.com/LIBCSYS/audionote
+cd audionote
+```
+
+Place the cloned folder **inside** your music directory. AudioNote scans its **parent folder** for MP3 files, so the layout should look like this:
 
 ```
 your-music-folder/
-├── www/                 ← AudioNote lives here
+├── audionote/          ← the cloned repo lives here
 │   ├── app.js
-│   ├── db.js
-│   ├── package.json
-│   ├── audionote.db     ← created on first run, gitignored
-│   └── public/
-│       ├── index.html
-│       ├── style.css
-│       └── client.js
+│   └── ...
 ├── song1.mp3
 ├── artist-folder/
 │   └── song2.mp3
 └── ...
 ```
 
-The server scans `../` relative to `app.js`, so the folder layout above is all that's needed — no configuration file required.
-
----
-
-## Requirements
-
-- **Node.js 22.5 or later** (uses the built-in `node:sqlite` module introduced in v22.5)
-
----
-
-## Setup
+Then install and run:
 
 ```bash
-git clone https://github.com/LIBCSYS/audionote
-```
-
-Place the cloned `audionote` folder inside your music directory, renaming it `www` (or whatever subdirectory name you prefer):
-
-```
-your-music-folder/
-└── www/          ← put the cloned repo here
-```
-
-Then install dependencies and start:
-
-```bash
-cd www
 npm install
 node app.js
 ```
 
-Open **http://localhost:3005** in your browser. Click **↻ Rescan Library** to scan your music folder and populate the catalog.
+Open **[http://localhost:3005](http://localhost:3005)** and click **↻ Rescan Library** to populate your catalog.
 
 ---
 
-## Network Access
+## 🔍 How It Works
 
-The server binds to `0.0.0.0:3005` and is accessible from any machine on your local network or VPN:
+AudioNote is a **Node.js / Express** server that runs on your machine. The browser is just a UI.
 
 ```
-http://<your-machine-ip>:3005
+your-music-folder/
+├── audionote/
+│   ├── app.js          → Express server, all API routes
+│   ├── db.js           → SQLite schema + connection (node:sqlite, built-in)
+│   ├── audionote.db    → your catalog, notes, timestamps (gitignored)
+│   └── public/
+│       ├── index.html  → single-page UI
+│       ├── style.css
+│       └── client.js   → vanilla JS, no framework
+└── your mp3s ...
 ```
 
-On Windows, open the port in the firewall:
+**On Rescan**, AudioNote walks your configured folders, finds every `.mp3`, reads its ID3 tags via `music-metadata`, and writes new entries into `audionote.db`. Missing files are soft-deleted (record preserved, `deleted_at` stamped). Your existing notes and timestamps are never touched.
+
+**Audio streaming** uses HTTP range requests so seeking works instantly without buffering the whole file.
+
+**Your data is yours.** `audionote.db` is gitignored. The repo ships completely blank.
+
+---
+
+## 🛠 Customization
+
+Edit the top of `app.js`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3005` | Port the server listens on |
+| `MUSIC_ROOT` | `path.join(__dirname, '..')` | Fallback folder if no scan dirs are configured |
+
+Or set `PORT` via environment variable:
+
+```bash
+PORT=8080 node app.js
+```
+
+### Windows Firewall (for network access)
 
 ```
 netsh advfirewall firewall add rule name="AudioNote" dir=in action=allow protocol=TCP localport=3005
@@ -92,32 +132,48 @@ netsh advfirewall firewall add rule name="AudioNote" dir=in action=allow protoco
 
 ---
 
-## Customization
+## 📊 CSV Export Format
 
-The two values most likely to need changing are at the top of `app.js`:
+Click **⬇ Export CSV** in the sidebar. The download is UTF-8 with BOM (opens cleanly in Excel on Windows) and Windows line endings.
 
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3005` | Port the server listens on |
-| `MUSIC_ROOT` | `path.join(__dirname, '..')` | Folder to scan for MP3s |
+One row per timestamp. Tracks with notes but no timestamps still get a row.
+
+| Column | Description |
+|---|---|
+| `song_id` | Internal ID |
+| `title` / `artist` / `album` | ID3 tag data |
+| `duration_sec` / `duration_formatted` | e.g. `214.5` / `3:34` |
+| `filepath` | Full path on disk |
+| `note` | Your song note text |
+| `timestamp_id` | Internal ID |
+| `time_seconds` / `time_formatted` | e.g. `102.4` / `1:42` |
+| `label` | Your marker label |
+| `category` | Reserved for future vocal/riff classification |
+| `marked_at` / `cataloged_at` | ISO datetimes |
 
 ---
 
-## Roadmap
+## 🗺 Roadmap
 
-- Vocal line tabulation and markup
-- Chord / riff transposition tools
-- Timestamp export (JSON, CSV)
-- Multi-format support (FLAC, WAV, AAC)
-- Multi-user / shared annotation
+- [ ] Vocal line tabulation and markup
+- [ ] Chord / riff transposition tools
+- [ ] Multi-format support (FLAC, WAV, AAC, M4A)
+- [ ] Web demo — browser-native version via File System Access API
+- [ ] Playlist / queue support
+- [ ] Dark / light theme toggle
 
 ---
 
 ## License
 
-MIT
+MIT — do whatever you want with it.
 
 ---
 
-*A TheRatsAsses Music Release — dba LibCSystems*  
-*© 2026 LibCSystems LLC*
+<div align="center">
+
+<img src="logo-small.png" width="48" alt="AudioNote">
+
+*A [TheRatsAsses](https://theratsasses.com) Music Release — dba LibCSystems · © 2026 LibCSystems LLC*
+
+</div>
