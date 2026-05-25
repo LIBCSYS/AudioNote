@@ -183,3 +183,40 @@ kbd { background: var(--card-bg); border: 1px solid var(--border); border-radius
 
 /* ── IMPORT BUTTON ── */
 .btn-import { text-align: center; }
+
+/* ── SCROLLBAR ── */
+#main { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+#main::-webkit-scrollbar { width: 5px; }
+#main::-webkit-scrollbar-track { background: transparent; }
+#main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+#song-list { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+#song-list::-webkit-scrollbar { width: 4px; }
+#song-list::-webkit-scrollbar-track { background: transparent; }
+#song-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  #app { flex-direction: column; height: auto; min-height: calc(100vh - 32px); overflow: visible; }
+  #sidebar { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border); overflow: visible; }
+  #sidebar .sidebar-top { flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+  #sidebar .sidebar-top .app-title { width: 100%; }
+  #sidebar .sidebar-top .btn-secondary,
+  #sidebar .sidebar-top .btn-filter { width: calc(50% - 3px); }
+  #sidebar .sidebar-top #search-input { width: 100%; }
+  #song-list { max-height: 240px; }
+  #main { overflow-y: visible; padding: 16px; }
+  #chat-panel { width: calc(100vw - 24px); right: 12px; }
+  .home-hero { padding: 24px 16px 16px; }
+  .home-section { padding: 0 12px 16px; }
+  .install-section { padding: 0 12px 24px; }
+}
+
+@media (max-width: 480px) {
+  .home-features { grid-template-columns: 1fr 1fr; }
+  #sidebar .sidebar-top .btn-secondary,
+  #sidebar .sidebar-top .btn-filter { width: 100%; }
+}
+
+@media (max-width: 340px) {
+  .home-features { grid-template-columns: 1fr; }
+}
