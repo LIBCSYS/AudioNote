@@ -88,11 +88,11 @@ app.post('/api/rescan', async (req, res) => {
       added++;
     }
   }
-  // Remove DB entries whose files no longer exist
-  const allSongs = db.prepare('SELECT id, filepath FROM songs').all();
-  const removed = allSongs.filter(s => !fs.existsSync(s.filepath));
-  const deleteSong = db.prepare('DELETE FROM songs WHERE id = ?');
-  for (const s of removed) deleteSong.run(s.id);
+  // Soft-delete entries whose files no longer exist on disk
+  const allSongs = db.prepare('SELECT id, filepath FROM songs WHERE deleted_at IS NULL').all();
+  const removed  = allSongs.filter(s => !fs.existsSync(s.filepath));
+  const softDel  = db.prepare("UPDATE songs SET deleted_at = datetime('now') WHERE id = ?");
+  for (const s of removed) softDel.run(s.id);
 
   const songs = db.prepare(SONGS_QUERY).all();
   res.json({ added, removed: removed.length, total: songs.length, songs });
@@ -103,6 +103,7 @@ const SONGS_QUERY = `
     CASE WHEN sn.note_text IS NOT NULL AND sn.note_text != '' THEN 1 ELSE 0 END AS has_note
   FROM songs s
   LEFT JOIN song_notes sn ON sn.song_id = s.id
+  WHERE s.deleted_at IS NULL
   ORDER BY s.artist, s.title
 `;
 
@@ -137,6 +138,102 @@ app.post('/api/songs/:id/timestamps', (req, res) => {
     'INSERT INTO timestamps (song_id, time_seconds, label, category) VALUES (?, ?, ?, ?)'
   ).run(req.params.id, time_seconds, label, category);
   res.json(db.prepare('SELECT * FROM timestamps WHERE id = ?').get(result.lastInsertRowid));
+});
+
+// Soft-delete a song (record + notes + timestamps preserved, file untouched)
+app.delete('/api/songs/:id', (req, res) => {
+  db.prepare("UPDATE songs SET deleted_at = datetime('now') WHERE id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Rename file on disk and update DB
+app.patch('/api/songs/:id/rename', (req, res) => {
+  const { newName } = req.body;
+  if (!newName || !newName.trim()) return res.status(400).json({ error: 'Name required' });
+
+  const song = db.prepare('SELECT * FROM songs WHERE id = ?').get(req.params.id);
+  if (!song) return res.status(404).json({ error: 'Song not found' });
+
+  // Strip characters illegal in Windows/Mac filenames
+  const safeName = newName.trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim();
+  if (!safeName) return res.status(400).json({ error: 'Invalid filename' });
+
+  const dir     = path.dirname(song.filepath);
+  const ext     = path.extname(song.filepath);
+  const newPath = path.join(dir, safeName + ext);
+
+  if (newPath !== song.filepath && fs.existsSync(newPath)) {
+    return res.status(409).json({ error: 'A file with that name already exists' });
+  }
+  try {
+    if (newPath !== song.filepath) fs.renameSync(song.filepath, newPath);
+    db.prepare('UPDATE songs SET filepath = ?, title = ? WHERE id = ?').run(newPath, safeName, req.params.id);
+    res.json({ ok: true, filepath: newPath, title: safeName });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// CSV export — flat denormalized, one row per timestamp (songs with no timestamps get one row)
+app.get('/api/export/csv', (req, res) => {
+  const rows = db.prepare(`
+    SELECT
+      s.id            AS song_id,
+      s.title, s.artist, s.album,
+      s.duration_sec,
+      s.filepath,
+      s.created_at    AS cataloged_at,
+      sn.note_text,
+      sn.updated_at   AS note_updated_at,
+      ts.id           AS timestamp_id,
+      ts.time_seconds,
+      ts.label,
+      ts.category,
+      ts.created_at   AS marked_at
+    FROM songs s
+    LEFT JOIN song_notes sn ON sn.song_id = s.id AND sn.note_text != ''
+    LEFT JOIN timestamps  ts ON ts.song_id = s.id
+    ORDER BY s.artist, s.title, ts.time_seconds
+  `).all();
+
+  const fmtTime = s => {
+    if (s === null || s === undefined) return '';
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  };
+
+  const cell = v => {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
+    return (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r'))
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+
+  const headers = [
+    'song_id','title','artist','album',
+    'duration_sec','duration_formatted',
+    'filepath','note','note_updated_at',
+    'timestamp_id','time_seconds','time_formatted',
+    'label','category','marked_at','cataloged_at'
+  ];
+
+  const lines = [headers.join(',')];
+  for (const r of rows) {
+    lines.push([
+      r.song_id,
+      cell(r.title),   cell(r.artist),  cell(r.album),
+      r.duration_sec ?? '', fmtTime(r.duration_sec),
+      cell(r.filepath), cell(r.note_text ?? ''), r.note_updated_at ?? '',
+      r.timestamp_id ?? '', r.time_seconds ?? '', fmtTime(r.time_seconds),
+      cell(r.label ?? ''), cell(r.category ?? ''), r.marked_at ?? '',
+      r.cataloged_at
+    ].join(','));
+  }
+
+  const csv = lines.join('\r\n') + '\r\n';
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="audionote-export.csv"');
+  res.send('﻿' + csv); // BOM so Excel auto-detects UTF-8
 });
 
 app.patch('/api/timestamps/:id', (req, res) => {

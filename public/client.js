@@ -22,6 +22,8 @@ const playerPanel = $('player-panel');
 const emptyState  = $('empty-state');
 const rescanBtn   = $('rescan-btn');
 const notedFilter = $('noted-filter');
+const renameBtn   = $('rename-btn');
+const deleteBtn   = $('delete-btn');
 const scanPanel   = $('scan-panel');
 const foldersList = $('folders-list');
 const drivesList  = $('drives-list');
@@ -134,6 +136,70 @@ progressBar.addEventListener('input', () => {
 
 volumeBar.addEventListener('input', () => {
   audio.volume = volumeBar.value / 100;
+});
+
+// ── RENAME ────────────────────────────────────────────────
+
+renameBtn.addEventListener('click', () => {
+  if (!state.currentSong) return;
+  const titleEl  = $('np-title');
+  const current  = state.currentSong.title;
+  const input    = document.createElement('input');
+  input.type      = 'text';
+  input.value     = current;
+  input.className = 'rename-input';
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const commit = async () => {
+    if (done) return;
+    done = true;
+    const newName = input.value.trim();
+    const restore = (text) => {
+      const div = document.createElement('div');
+      div.id = 'np-title';
+      div.textContent = text;
+      input.replaceWith(div);
+    };
+    if (!newName || newName === current) { restore(current); return; }
+    const res  = await fetch(`/api/songs/${state.currentSong.id}/rename`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newName }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      state.currentSong.title = data.title;
+      state.currentSong.filepath = data.filepath;
+      const entry = state.songs.find(s => s.id === state.currentSong.id);
+      if (entry) { entry.title = data.title; entry.filepath = data.filepath; }
+      restore(data.title);
+      applyFilters();
+    } else {
+      restore(current);
+      alert(data.error || 'Rename failed');
+    }
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { done = true; const d = document.createElement('div'); d.id='np-title'; d.textContent=current; input.replaceWith(d); }
+  });
+  input.addEventListener('blur', commit);
+});
+
+// ── DELETE (SOFT) ─────────────────────────────────────────
+
+deleteBtn.addEventListener('click', async () => {
+  if (!state.currentSong) return;
+  if (!confirm(`Remove "${state.currentSong.title}" from your library?\n\nThe file stays on disk. Notes and timestamps are preserved in the database.`)) return;
+  await fetch(`/api/songs/${state.currentSong.id}`, { method: 'DELETE' });
+  state.songs = state.songs.filter(s => s.id !== state.currentSong.id);
+  state.currentSong = null;
+  $('player-panel').classList.add('hidden');
+  $('empty-state').classList.remove('hidden');
+  applyFilters();
 });
 
 // ── MARK TIMESTAMP ────────────────────────────────────────

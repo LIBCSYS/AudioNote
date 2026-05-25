@@ -15,6 +15,7 @@
       <input type="text" id="search-input" placeholder="Search tracks..." autocomplete="off">
       <button id="noted-filter" class="btn-filter">📝 Noted only</button>
       <button id="rescan-btn" class="btn-secondary">↻ Rescan Library</button>
+      <a id="export-btn" href="/api/export/csv" class="btn-secondary btn-export">⬇ Export CSV</a>
     </div>
 
     <div id="scan-panel" class="hidden">
@@ -52,7 +53,11 @@
     <div id="player-panel" class="hidden">
 
       <div class="card" id="now-playing-card">
-        <div id="np-title">—</div>
+        <div id="np-title-row">
+          <div id="np-title">—</div>
+          <button id="rename-btn" class="btn-icon" title="Rename file">✏️</button>
+          <button id="delete-btn" class="btn-icon btn-icon-danger" title="Remove from library">🗑</button>
+        </div>
         <div id="np-meta">—</div>
         <audio id="audio" preload="metadata"></audio>
         <div id="progress-row">
@@ -92,7 +97,7 @@
     <span class="about-sep">·</span>
     <span class="about-version">v0.0.00.1</span>
     <span class="about-sep">·</span>
-    <span class="about-brand">A TheRatsAsses Music Release</span>
+    <a href="https://theratsasses.com" target="_blank" class="about-brand about-link">A TheRatsAsses Music Release</a>
     <span class="about-sep">·</span>
     <span class="about-dba">dba LibCSystems</span>
   </footer>

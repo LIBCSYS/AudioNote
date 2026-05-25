@@ -8,6 +8,9 @@ const db = new DatabaseSync(path.join(__dirname, 'audionote.db'));
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
+// Migrations — safe to run on every start
+try { db.exec('ALTER TABLE songs ADD COLUMN deleted_at TEXT'); } catch {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS scan_dirs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
