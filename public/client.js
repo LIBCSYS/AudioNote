@@ -531,68 +531,53 @@ async function addFolder() {
 folderAddBtn.addEventListener('click', addFolder);
 folderInput.addEventListener('keydown', e => { if (e.key === 'Enter') addFolder(); });
 
-// ── WEB MODE: FILE SYSTEM ACCESS API ─────────────────────
+// ── WEB MODE: FILE PICKER ─────────────────────────────────
 
-async function pickAndScanDirectory() {
-  if (!window.showOpenFilePicker) {
-    alert('Your browser does not support file picking.\nTry Chrome or Edge.');
-    return;
-  }
-  let handles;
-  try {
-    handles = await window.showOpenFilePicker({
-      startIn: 'music',
-      multiple: true,
-      types: [{
-        description: 'Audio files',
-        accept: {
-          'audio/mpeg':  ['.mp3'],
-          'audio/mp4':   ['.m4a', '.aac'],
-          'audio/wav':   ['.wav'],
-          'audio/flac':  ['.flac'],
-          'audio/ogg':   ['.ogg'],
-        },
-      }],
-      excludeAcceptAllOption: false,
+function pickAndScanDirectory() {
+  const input = document.createElement('input');
+  input.type     = 'file';
+  input.accept   = '.mp3,.m4a,.aac,.wav,.flac,.ogg';
+  input.multiple = true;
+
+  input.addEventListener('change', async () => {
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
+
+    rescanBtn.textContent = '↻ Loading...';
+    rescanBtn.disabled = true;
+
+    const pending = [];
+    for (const file of files) {
+      const duration = await getDuration(file);
+      pending.push({ filepath: `web:${file.name}`, title: file.name.replace(/\.[^.]+$/, ''), artist: '', album: '', duration_sec: duration, _file: file });
+    }
+
+    const res = await fetch('/api/songs/web-upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pending.map(({ _file, ...s }) => s)),
     });
-  } catch (e) {
-    if (e.name !== 'AbortError') alert('Could not open file picker:\n' + e.message);
-    return;
-  }
+    const serverSongs = await res.json();
 
-  rescanBtn.textContent = '↻ Loading...';
-  rescanBtn.disabled = true;
+    for (const ss of serverSongs) {
+      const p = pending.find(s => s.filepath === ss.filepath);
+      if (p) fileHandles.set(ss.id, p._file);
+    }
 
-  const pending = [];
-  for (const handle of handles) {
-    const file = await handle.getFile();
-    const duration = await getDuration(file);
-    pending.push({ filepath: `web:${file.name}`, title: file.name.replace(/\.[^.]+$/, ''), artist: '', album: '', duration_sec: duration, _file: file });
-  }
+    // Merge new files into existing list (don't wipe — allow adding more)
+    const existingIds = new Set(state.songs.map(s => s.id));
+    for (const s of serverSongs) {
+      if (!existingIds.has(s.id)) state.songs.push(s);
+      else { const i = state.songs.findIndex(x => x.id === s.id); if (i >= 0) state.songs[i] = s; }
+    }
+    state.songs.sort((a, b) => (a.artist || '').localeCompare(b.artist || '') || a.title.localeCompare(b.title));
+    applyFilters();
 
-  const res = await fetch('/api/songs/web-upsert', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(pending.map(({ _file, ...s }) => s)),
+    rescanBtn.textContent = `✓ ${files.length} added`;
+    setTimeout(() => { rescanBtn.textContent = '🎵 Add Files'; rescanBtn.disabled = false; }, 2000);
   });
-  const serverSongs = await res.json();
 
-  for (const ss of serverSongs) {
-    const p = pending.find(s => s.filepath === ss.filepath);
-    if (p) fileHandles.set(ss.id, p._file);
-  }
-
-  // Merge new files into existing list (don't wipe — allow adding more)
-  const existingIds = new Set(state.songs.map(s => s.id));
-  for (const s of serverSongs) {
-    if (!existingIds.has(s.id)) state.songs.push(s);
-    else { const i = state.songs.findIndex(x => x.id === s.id); if (i >= 0) state.songs[i] = s; }
-  }
-  state.songs.sort((a, b) => (a.artist || '').localeCompare(b.artist || '') || a.title.localeCompare(b.title));
-  applyFilters();
-
-  rescanBtn.textContent = `✓ ${handles.length} added`;
-  setTimeout(() => { rescanBtn.textContent = '🎵 Add Files'; rescanBtn.disabled = false; }, 2000);
+  input.click();
 }
 
 function getDuration(file) {
@@ -733,3 +718,5 @@ if (WEB_MODE) {
     if (!state.songs.length) openScanPanel();
   });
 }
+
+window.AUDIONOTE_LOADED = true;

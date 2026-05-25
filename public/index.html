@@ -264,6 +264,14 @@
 </div>
 <script src="client.js"></script>
 <script>
+  if (!window.AUDIONOTE_LOADED) {
+    var b = document.createElement('div');
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:14px 20px;z-index:9999;font-size:14px;font-family:sans-serif;text-align:center';
+    b.innerHTML = '&#9888; <strong>AudioNote failed to start.</strong> Make sure you ran <code style="background:rgba(0,0,0,.3);padding:2px 6px;border-radius:3px">node app.js</code> from inside the <strong>AudioNote</strong> folder, then refresh this page.';
+    document.body.appendChild(b);
+  }
+</script>
+<script>
   function toggleInstall() {
     const body = document.getElementById('install-body');
     const btn  = document.querySelector('.install-toggle');
