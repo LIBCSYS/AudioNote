@@ -87,39 +87,44 @@ app.delete('/api/scan-dirs/:id', (req, res) => {
 
 // Rescan all configured directories (falls back to parent dir if none configured)
 app.post('/api/rescan', async (req, res) => {
-  const mm = require('music-metadata');
-  const configuredDirs = db.prepare('SELECT dirpath FROM scan_dirs').all().map(r => r.dirpath);
-  const dirsToScan = configuredDirs.length ? configuredDirs : [MUSIC_ROOT];
-  const files = [];
-  for (const dir of dirsToScan) scanDir(dir, files);
-  const insert = db.prepare(
-    'INSERT OR IGNORE INTO songs (filepath, title, artist, album, duration_sec) VALUES (?, ?, ?, ?, ?)'
-  );
-  let added = 0;
-  for (const fp of files) {
-    const exists = db.prepare('SELECT id FROM songs WHERE filepath = ?').get(fp);
-    if (!exists) {
-      let title = path.basename(fp, '.mp3');
-      let artist = '', album = '', duration_sec = 0;
-      try {
-        const meta = await mm.parseFile(fp, { duration: true, skipCovers: true });
-        title        = meta.common.title  || title;
-        artist       = meta.common.artist || '';
-        album        = meta.common.album  || '';
-        duration_sec = meta.format.duration || 0;
-      } catch {}
-      insert.run(fp, title, artist, album, duration_sec);
-      added++;
+  try {
+    const mm = require('music-metadata');
+    const configuredDirs = db.prepare('SELECT dirpath FROM scan_dirs').all().map(r => r.dirpath);
+    const dirsToScan = configuredDirs.length ? configuredDirs : [MUSIC_ROOT];
+    const files = [];
+    for (const dir of dirsToScan) scanDir(dir, files);
+    const insert = db.prepare(
+      'INSERT OR IGNORE INTO songs (filepath, title, artist, album, duration_sec) VALUES (?, ?, ?, ?, ?)'
+    );
+    let added = 0;
+    for (const fp of files) {
+      const exists = db.prepare('SELECT id FROM songs WHERE filepath = ?').get(fp);
+      if (!exists) {
+        let title = path.basename(fp, '.mp3');
+        let artist = '', album = '', duration_sec = 0;
+        try {
+          const meta = await mm.parseFile(fp, { duration: true, skipCovers: true });
+          title        = meta.common.title  || title;
+          artist       = meta.common.artist || '';
+          album        = meta.common.album  || '';
+          duration_sec = meta.format.duration || 0;
+        } catch {}
+        insert.run(fp, title, artist, album, duration_sec);
+        added++;
+      }
     }
-  }
-  // Soft-delete entries whose files no longer exist on disk
-  const allSongs = db.prepare('SELECT id, filepath FROM songs WHERE deleted_at IS NULL').all();
-  const removed  = allSongs.filter(s => !fs.existsSync(s.filepath));
-  const softDel  = db.prepare("UPDATE songs SET deleted_at = datetime('now') WHERE id = ?");
-  for (const s of removed) softDel.run(s.id);
+    // Soft-delete entries whose files no longer exist on disk
+    const allSongs = db.prepare('SELECT id, filepath FROM songs WHERE deleted_at IS NULL').all();
+    const removed  = allSongs.filter(s => !fs.existsSync(s.filepath));
+    const softDel  = db.prepare("UPDATE songs SET deleted_at = datetime('now') WHERE id = ?");
+    for (const s of removed) softDel.run(s.id);
 
-  const songs = db.prepare(SONGS_QUERY).all();
-  res.json({ added, removed: removed.length, total: songs.length, songs });
+    const songs = db.prepare(SONGS_QUERY).all();
+    res.json({ added, removed: removed.length, total: songs.length, songs });
+  } catch (err) {
+    console.error('[rescan error]', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const SONGS_QUERY = `

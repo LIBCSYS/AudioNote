@@ -3,8 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AudioNote</title>
+  <title>AudioNote — Annotate Your Music</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* ── HOME LANDING ── */
+    #empty-state { padding: 0; display: flex; flex-direction: column; align-items: center; overflow-y: auto; }
+
+    .home-hero { text-align: center; padding: 48px 24px 32px; max-width: 600px; width: 100%; }
+    .home-logo-wrap { font-size: 3rem; margin-bottom: 12px; line-height: 1; }
+    .home-title { font-size: clamp(2rem, 6vw, 3rem); font-weight: 900; color: var(--text); margin-bottom: 6px; letter-spacing: -.02em; }
+    .home-tagline { font-size: 1.05rem; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+    .home-brand-attr { font-size: .72rem; color: var(--muted); margin-bottom: 18px; }
+    .home-brand-link { color: var(--muted); text-decoration: none; transition: color .15s; }
+    .home-brand-link:hover { color: var(--text); }
+    .home-cta { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 13px 28px; font-size: .95rem; font-weight: 700; cursor: pointer; transition: opacity .15s; font-family: inherit; }
+    .home-cta:hover { opacity: .85; }
+    .home-browser-note { font-size: .72rem; color: var(--muted); margin-top: 10px; }
+
+    /* ── FEATURE CARDS ── */
+    .home-section { width: 100%; max-width: 820px; padding: 0 20px 32px; }
+    .home-section-label { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); text-align: center; margin-bottom: 18px; }
+    .home-features { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+    .home-feat { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px 16px; display: flex; flex-direction: column; gap: 8px; transition: border-color .15s, transform .15s; }
+    .home-feat:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .feat-icon-wrap { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+    .c-purple { background: rgba(124,58,237,.15); }
+    .c-blue   { background: rgba(59,130,246,.15); }
+    .c-teal   { background: rgba(20,184,166,.15); }
+    .c-amber  { background: rgba(245,158,11,.15); }
+    .c-green  { background: rgba(22,163,74,.15);  }
+    .feat-title { font-size: .9rem; font-weight: 700; color: var(--text); }
+    .feat-desc  { font-size: .8rem; color: var(--muted); line-height: 1.55; }
+
+    /* ── INSTALL SECTION ── */
+    .install-section { width: 100%; max-width: 820px; padding: 0 20px 48px; }
+    .install-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 11px 18px; font-size: .82rem; font-weight: 600; color: var(--muted); cursor: pointer; width: 100%; text-align: left; font-family: inherit; transition: border-color .15s, color .15s; }
+    .install-toggle:hover { border-color: var(--accent); color: var(--text); }
+    .install-body { display: none; padding: 20px 0 0; }
+    .install-body.open { display: block; }
+    .install-steps { display: flex; flex-direction: column; gap: 14px; counter-reset: step; }
+    .install-step { display: flex; gap: 14px; align-items: flex-start; counter-increment: step; }
+    .install-step::before { content: counter(step); min-width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: .75rem; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .step-content { flex: 1; }
+    .step-label { font-size: .85rem; font-weight: 600; color: var(--text); margin-bottom: 5px; }
+    .step-detail { font-size: .78rem; color: var(--muted); line-height: 1.5; }
+    .code-block { background: #0d1117; border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; margin-top: 7px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .code-block code { font-family: monospace; font-size: .82rem; color: #a5f3fc; flex: 1; }
+    .copy-btn { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 5px; padding: 3px 8px; font-size: .7rem; cursor: pointer; font-family: inherit; white-space: nowrap; transition: all .15s; }
+    .copy-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    @media (max-width: 540px) {
+      .home-features { grid-template-columns: 1fr 1fr; }
+      .home-hero { padding: 32px 16px 24px; }
+    }
+    @media (max-width: 340px) {
+      .home-features { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
 <div id="app">
@@ -47,9 +102,107 @@
   <main id="main">
 
     <div id="empty-state">
-      <div class="empty-icon">🎵</div>
-      <p>Select a track from the library</p>
-      <p class="muted">or click Rescan Library to find your MP3s</p>
+
+      <div class="home-hero">
+        <div class="home-logo-wrap">🎵</div>
+        <h1 class="home-title">AudioNote</h1>
+        <p class="home-tagline">Annotate your music.<br>Your notes and timestamps, always yours.</p>
+        <p class="home-brand-attr">
+          <a href="https://theratsasses.com" target="_blank" class="home-brand-link">A TheRatsAsses Music Release</a>
+          &middot;
+          <a href="https://libcsys.com" target="_blank" class="home-brand-link">LIBCSystems LLC</a>
+        </p>
+        <button id="home-add-btn" class="home-cta">🎵 Add Files to Get Started</button>
+        <p class="home-browser-note">Chrome &amp; Edge &middot; files never leave your device</p>
+      </div>
+
+      <div class="home-section">
+        <div class="home-section-label">Two ways to annotate — pin moments, or note the whole track</div>
+        <div class="home-features">
+
+          <div class="home-feat">
+            <div class="feat-icon-wrap c-purple">📂</div>
+            <div class="feat-title">Pick your files</div>
+            <div class="feat-desc">Select MP3, M4A, WAV, FLAC, or OGG files directly from your device. Nothing is uploaded — everything stays local.</div>
+          </div>
+
+          <div class="home-feat">
+            <div class="feat-icon-wrap c-blue">▶️</div>
+            <div class="feat-title">Full-featured player</div>
+            <div class="feat-desc">Seek, scrub, adjust volume. HTML5 audio with instant range-request seeking so you jump right to any point in a long track.</div>
+          </div>
+
+          <div class="home-feat">
+            <div class="feat-icon-wrap c-teal">⏱</div>
+            <div class="feat-title">Drop timestamp markers</div>
+            <div class="feat-desc">Press <strong>M</strong> (or tap Mark) while a track plays to pin the exact moment. Label it — riff, hook, bridge, lyric, anything. Click the marker to jump back instantly.</div>
+          </div>
+
+          <div class="home-feat">
+            <div class="feat-icon-wrap c-amber">📝</div>
+            <div class="feat-title">Per-track notes</div>
+            <div class="feat-desc">Write freeform notes about the whole track — lyrics, chords, production thoughts. Auto-saved as you type. Filter your library to show only annotated tracks.</div>
+          </div>
+
+          <div class="home-feat">
+            <div class="feat-icon-wrap c-green">⬇️</div>
+            <div class="feat-title">Export &amp; import</div>
+            <div class="feat-desc">Export your full catalog — notes and all markers — as UTF-8 CSV ready for Excel. Import back in on any machine. Supports AudioNote, iTunes, Spotify, and Last.fm formats.</div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="install-section">
+        <button class="install-toggle" onclick="window.toggleInstall && toggleInstall()">
+          ⭐ Best experienced installed locally on your system &nbsp;▼
+        </button>
+        <div class="install-body" id="install-body">
+          <div class="install-steps">
+
+            <div class="install-step">
+              <div class="step-content">
+                <div class="step-label">Install <a href="https://nodejs.org" target="_blank" rel="noopener" style="color:var(--accent)">Node.js 22.5+</a></div>
+                <div class="step-detail">Required — AudioNote uses the built-in SQLite module available from Node 22.5 onward. No native compilation needed.</div>
+              </div>
+            </div>
+
+            <div class="install-step">
+              <div class="step-content">
+                <div class="step-label">Clone the repo into your music folder</div>
+                <div class="code-block">
+                  <code>git clone https://github.com/LIBCSYS/AudioNote</code>
+                  <button class="copy-btn" onclick="navigator.clipboard.writeText('git clone https://github.com/LIBCSYS/AudioNote')">Copy</button>
+                </div>
+                <div class="step-detail" style="margin-top:6px">Place the folder <em>inside</em> your music directory — AudioNote scans its parent folder by default.</div>
+              </div>
+            </div>
+
+            <div class="install-step">
+              <div class="step-content">
+                <div class="step-label">Install dependencies</div>
+                <div class="code-block">
+                  <code>cd AudioNote &amp;&amp; npm install</code>
+                  <button class="copy-btn" onclick="navigator.clipboard.writeText('cd AudioNote && npm install')">Copy</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="install-step">
+              <div class="step-content">
+                <div class="step-label">Start the server</div>
+                <div class="code-block">
+                  <code>node app.js</code>
+                  <button class="copy-btn" onclick="navigator.clipboard.writeText('node app.js')">Copy</button>
+                </div>
+                <div class="step-detail" style="margin-top:6px">Navigate to <strong>http://localhost:2600</strong> and click <strong>↻ Rescan Library</strong> — AudioNote finds every MP3 in your music folder automatically.</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <div id="player-panel" class="hidden">
@@ -108,6 +261,14 @@
 
 </div>
 <script src="client.js"></script>
+<script>
+  function toggleInstall() {
+    const body = document.getElementById('install-body');
+    const btn  = document.querySelector('.install-toggle');
+    const open = body.classList.toggle('open');
+    btn.textContent = (open ? '⭐ Best experienced installed locally on your system  ▲' : '⭐ Best experienced installed locally on your system  ▼');
+  }
+</script>
 
 <!-- Ask AudioNote chatbot -->
 <button id="chat-fab" title="Ask AudioNote">💬</button>

@@ -448,11 +448,13 @@ scanNowBtn.addEventListener('click', async () => {
   try {
     const res  = await fetch('/api/rescan', { method: 'POST' });
     const data = await res.json();
+    if (data.error) throw new Error(data.error);
     state.songs = data.songs;
     applyFilters();
     scanNowBtn.textContent = `✓ ${data.added} added, ${data.removed} removed`;
-  } catch {
+  } catch (err) {
     scanNowBtn.textContent = '↻ Scan failed';
+    alert('Scan failed: ' + (err.message || 'unknown error'));
   }
   setTimeout(() => {
     scanNowBtn.textContent = '↻ Scan Now';
@@ -524,12 +526,22 @@ async function pickAndScanDirectory() {
   let handles;
   try {
     handles = await window.showOpenFilePicker({
-      startIn: 'desktop',
+      startIn: 'music',
       multiple: true,
-      types: [{ description: 'Audio files', accept: { 'audio/*': ['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.mp4'] } }],
+      types: [{
+        description: 'Audio files',
+        accept: {
+          'audio/mpeg':  ['.mp3'],
+          'audio/mp4':   ['.m4a', '.aac'],
+          'audio/wav':   ['.wav'],
+          'audio/flac':  ['.flac'],
+          'audio/ogg':   ['.ogg'],
+        },
+      }],
+      excludeAcceptAllOption: false,
     });
   } catch (e) {
-    if (e.name !== 'AbortError') console.error(e);
+    if (e.name !== 'AbortError') alert('Could not open file picker:\n' + e.message);
     return;
   }
 
@@ -641,6 +653,10 @@ if (WEB_MODE) {
   const homeAddBtn = $('home-add-btn');
   if (homeAddBtn) homeAddBtn.addEventListener('click', pickAndScanDirectory);
 } else {
+  const homeAddBtn = $('home-add-btn');
+  if (homeAddBtn) homeAddBtn.style.display = 'none';
+  const homeNote = document.querySelector('.home-browser-note');
+  if (homeNote) homeNote.textContent = 'Click ↻ Rescan Library in the sidebar to load your music';
   loadSongs();
   loadFolders();
 }
