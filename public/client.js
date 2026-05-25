@@ -344,6 +344,70 @@ notedFilter.addEventListener('click', () => {
   applyFilters();
 });
 
+// ── CSV IMPORT ────────────────────────────────────────────
+
+const importBtn  = $('import-btn');
+const importFile = $('import-file');
+
+if (importBtn) {
+  importBtn.addEventListener('click', () => importFile.click());
+
+  importFile.addEventListener('change', async () => {
+    const file = importFile.files[0];
+    if (!file) return;
+    importFile.value = '';
+
+    importBtn.textContent = '⏳ Importing...';
+    importBtn.disabled = true;
+
+    try {
+      const csv = await file.text();
+      const res  = await fetch('/api/import/csv', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ csv }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showImportToast('error', data.error || 'Import failed');
+        return;
+      }
+
+      const parts = [];
+      if (data.songs_added)      parts.push(`${data.songs_added} added`);
+      if (data.songs_updated)    parts.push(`${data.songs_updated} updated`);
+      if (data.notes_set)        parts.push(`${data.notes_set} notes`);
+      if (data.timestamps_added) parts.push(`${data.timestamps_added} markers`);
+      const summary = parts.length ? parts.join(', ') : 'nothing new';
+      showImportToast('ok', `Import complete — ${summary}`);
+
+      // Reload songs if any were added/updated
+      if (data.songs_added || data.songs_updated) {
+        const songs = await (await fetch('/api/songs')).json();
+        state.songs = songs;
+        applyFilters();
+      }
+    } catch (e) {
+      showImportToast('error', 'Import failed: ' + e.message);
+    } finally {
+      importBtn.textContent = '⬆ Import CSV';
+      importBtn.disabled = false;
+    }
+  });
+}
+
+function showImportToast(type, msg) {
+  const existing = document.querySelector('.import-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.className = `import-toast import-toast-${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
+  setTimeout(() => { toast.classList.remove('visible'); setTimeout(() => toast.remove(), 300); }, 4000);
+}
+
 // ── RESCAN PANEL ─────────────────────────────────────────
 
 let scanPanelOpen = false;

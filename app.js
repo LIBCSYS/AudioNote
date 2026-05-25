@@ -7,6 +7,7 @@ const db      = require('./db');
 
 const app        = express();
 const PORT       = process.env.PORT || 2600;
+const VERSION    = '0.00.3';
 const MUSIC_ROOT = process.env.MUSIC_ROOT || path.join(__dirname, '..');
 
 app.use(express.json());
@@ -198,6 +199,159 @@ app.patch('/api/songs/:id/rename', (req, res) => {
   }
 });
 
+// ── CSV IMPORT ────────────────────────────────────────────
+
+// RFC 4180 compliant parser — handles BOM, CRLF/LF, quoted fields, escaped quotes
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let field = '', row = [], inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i], n = text[i + 1];
+    if (inQ) {
+      if (c === '"' && n === '"') { field += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else field += c;
+    } else {
+      if (c === '"') { inQ = true; }
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\r' && n === '\n') { row.push(field); field = ''; rows.push(row); row = []; i++; }
+      else if (c === '\n' || c === '\r') { row.push(field); field = ''; rows.push(row); row = []; }
+      else field += c;
+    }
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(f => f.trim()));
+}
+
+// Industry-standard column name aliases (case-insensitive)
+// Covers: AudioNote own format, iTunes, Spotify/Exportify, Last.fm, foobar2000, MusicBee, beets
+const COL_ALIASES = {
+  filepath:      ['filepath','file_path','path','location','file location','file','track location'],
+  title:         ['title','name','track','track name','song','song name','song title','track title'],
+  artist:        ['artist','artist name','artists','performer','artist(s)','album artist'],
+  album:         ['album','album name','album title','release','disc'],
+  duration_sec:  ['duration_sec','duration','length','total time','time_seconds_total','playtime'],
+  note_text:     ['note','note_text','notes','comment','comments','description','annotation','lyrics'],
+  time_seconds:  ['time_seconds','time','position','offset','offset_sec','cue','cue_seconds'],
+  time_formatted:['time_formatted','timestamp','time_format','cue_time','marker','mark','timecode'],
+  label:         ['label','marker_label','tag','marker_name','cue_name','note_label','cue_label'],
+  category:      ['category','cat','type','genre_marker','cue_type'],
+};
+
+function mapHeaders(headers) {
+  const map = {};
+  headers.forEach((h, i) => {
+    const key = h.trim().toLowerCase().replace(/\s+/g, ' ');
+    for (const [col, aliases] of Object.entries(COL_ALIASES)) {
+      if (aliases.includes(key) && !(col in map)) { map[col] = i; break; }
+    }
+  });
+  return map;
+}
+
+// Parse mm:ss or h:mm:ss → seconds
+function parseTimeFmt(str) {
+  if (!str || !str.trim()) return null;
+  const parts = str.trim().split(':').map(p => parseFloat(p) || 0);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
+}
+
+app.post('/api/import/csv', (req, res) => {
+  const { csv } = req.body;
+  if (!csv || typeof csv !== 'string') return res.status(400).json({ error: 'csv string required' });
+
+  let rows;
+  try { rows = parseCSV(csv); } catch (e) { return res.status(400).json({ error: 'CSV parse error: ' + e.message }); }
+  if (rows.length < 2) return res.status(400).json({ error: 'CSV must have a header row and at least one data row' });
+
+  const headers = rows[0];
+  const col     = mapHeaders(headers);
+  const get     = (row, key) => col[key] !== undefined ? (row[col[key]] || '').trim() : '';
+
+  // Group data rows by song key: filepath > (title|||artist)
+  const songMap = new Map(); // key → { meta, rows[] }
+  for (const row of rows.slice(1)) {
+    const fp    = get(row, 'filepath');
+    const title = get(row, 'title');
+    const artist= get(row, 'artist');
+    const key   = fp || `${title}|||${artist}`;
+    if (!key || key === '|||') continue;
+    if (!songMap.has(key)) {
+      songMap.set(key, {
+        filepath:     fp,
+        title:        title || 'Unknown',
+        artist:       artist || '',
+        album:        get(row, 'album'),
+        duration_sec: parseFloat(get(row, 'duration_sec')) || 0,
+        rows: [],
+      });
+    }
+    songMap.get(key).rows.push(row);
+  }
+
+  let songs_added = 0, songs_updated = 0, notes_set = 0, timestamps_added = 0, skipped = 0;
+
+  const upsertSong = db.prepare(
+    'INSERT OR IGNORE INTO songs (filepath, title, artist, album, duration_sec) VALUES (?, ?, ?, ?, ?)'
+  );
+  const updateSong = db.prepare(
+    'UPDATE songs SET title=?, artist=?, album=?, duration_sec=?, deleted_at=NULL WHERE filepath=?'
+  );
+  const upsertNote = db.prepare(
+    `INSERT INTO song_notes (song_id, note_text) VALUES (?, ?)
+     ON CONFLICT(song_id) DO UPDATE SET note_text=excluded.note_text, updated_at=datetime('now')`
+  );
+  const hasTs = db.prepare(
+    'SELECT id FROM timestamps WHERE song_id=? AND ABS(time_seconds - ?) < 0.5'
+  );
+  const insertTs = db.prepare(
+    'INSERT INTO timestamps (song_id, time_seconds, label, category) VALUES (?, ?, ?, ?)'
+  );
+
+  for (const [, song] of songMap) {
+    const fp = song.filepath || `import:${song.title}`;
+
+    const info = upsertSong.run(fp, song.title, song.artist, song.album, song.duration_sec);
+    if (info.changes > 0) {
+      songs_added++;
+    } else {
+      updateSong.run(song.title, song.artist, song.album, song.duration_sec, fp);
+      songs_updated++;
+    }
+
+    const dbSong = db.prepare('SELECT id FROM songs WHERE filepath=?').get(fp);
+    if (!dbSong) { skipped++; continue; }
+    const songId = dbSong.id;
+
+    // Collect best note text from any row in this song group
+    const noteText = song.rows.map(r => get(r, 'note_text')).find(n => n) || '';
+    if (noteText) {
+      upsertNote.run(songId, noteText);
+      notes_set++;
+    }
+
+    // Timestamps — one per row if time data present
+    for (const row of song.rows) {
+      let secs = parseFloat(get(row, 'time_seconds'));
+      if (isNaN(secs) || secs === 0) {
+        const parsed = parseTimeFmt(get(row, 'time_formatted'));
+        if (parsed !== null) secs = parsed;
+        else continue;
+      }
+      if (!hasTs.get(songId, secs)) {
+        insertTs.run(songId, secs, get(row, 'label'), get(row, 'category'));
+        timestamps_added++;
+      }
+    }
+  }
+
+  const total = db.prepare("SELECT COUNT(*) AS n FROM songs WHERE deleted_at IS NULL").get().n;
+  res.json({ songs_added, songs_updated, notes_set, timestamps_added, skipped, total, columns_detected: Object.keys(col) });
+});
+
 // CSV export — flat denormalized, one row per timestamp (songs with no timestamps get one row)
 app.get('/api/export/csv', (req, res) => {
   const rows = db.prepare(`
@@ -332,7 +486,7 @@ app.listen(PORT, '0.0.0.0', () => {
   const os   = require('os');
   const nets = Object.values(os.networkInterfaces()).flat().filter(n => n.family === 'IPv4' && !n.internal);
   const ip   = nets.length ? nets[0].address : 'YOUR_IP';
-  console.log(`\nAudioNote v0.00.2`);
+  console.log(`\nAudioNote v${VERSION}`);
   console.log(`Local     : http://localhost:${PORT}`);
   console.log(`Network   : http://${ip}:${PORT}`);
   console.log(`Music root: ${MUSIC_ROOT}\n`);

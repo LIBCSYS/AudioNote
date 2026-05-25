@@ -174,3 +174,12 @@ kbd { background: var(--card-bg); border: 1px solid var(--border); border-radius
 #note-input:focus { border-color: var(--accent); }
 
 .note-status { font-size: 11px; color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* ── IMPORT TOAST ── */
+.import-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(12px); background: #1e293b; border: 1px solid var(--border); color: var(--text); font-size: 13px; padding: 10px 18px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,.5); z-index: 9999; opacity: 0; transition: opacity .2s, transform .2s; white-space: nowrap; pointer-events: none; }
+.import-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.import-toast-ok  { border-color: var(--accent); color: #a5f3fc; }
+.import-toast-error { border-color: var(--danger); color: #fca5a5; }
+
+/* ── IMPORT BUTTON ── */
+.btn-import { text-align: center; }

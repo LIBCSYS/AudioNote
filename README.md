@@ -6,7 +6,7 @@
 
 **Local-first music catalog, annotation, and live timestamp tool**
 
-[![Version](https://img.shields.io/badge/version-0.00.2-7b68ee?style=flat-square)](https://github.com/LIBCSYS/audionote/releases)
+[![Version](https://img.shields.io/badge/version-0.00.3-7b68ee?style=flat-square)](https://github.com/LIBCSYS/audionote/releases)
 [![Node.js](https://img.shields.io/badge/Node.js-22.5+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SQLite](https://img.shields.io/badge/SQLite-built--in-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://nodejs.org/api/sqlite.html)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
@@ -173,7 +173,7 @@ One row per timestamp. Tracks with notes but no timestamps still get a row.
 - [x] AI chat assistant (Ask AudioNote)
 - [x] Multi-format support in web mode (MP3, M4A, WAV, FLAC, OGG, AAC)
 - [ ] Multi-format support in local mode (FLAC, WAV, AAC, M4A)
-- [ ] CSV import
+- [x] CSV import (v0.00.3 — round-trip + iTunes/Spotify/Last.fm column aliases)
 - [ ] Vocal line tabulation and markup
 - [ ] Chord / riff transposition tools
 - [ ] Playlist / queue support
