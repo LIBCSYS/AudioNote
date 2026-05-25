@@ -19,6 +19,21 @@ db.exec('PRAGMA foreign_keys = ON;');
 try { db.exec('ALTER TABLE songs ADD COLUMN deleted_at TEXT'); } catch {}
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS visits (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         TEXT DEFAULT (datetime('now')),
+    method     TEXT,
+    path       TEXT,
+    status     INTEGER,
+    ip         TEXT,
+    referrer   TEXT,
+    ua         TEXT,
+    ms         INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS visits_ts ON visits(ts);
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS scan_dirs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     dirpath    TEXT UNIQUE NOT NULL,

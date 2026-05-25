@@ -95,7 +95,7 @@ npm install
 node app.js
 ```
 
-Open **[http://localhost:3005](http://localhost:3005)** and click **↻ Rescan Library** to populate your catalog.
+Open **[http://localhost:2600](http://localhost:2600)** and click **↻ Rescan Library** to populate your catalog.
 
 ---
 
@@ -130,7 +130,7 @@ Edit the top of `app.js` or pass environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3005` | Port the server listens on |
+| `PORT` | `2600` | Port the server listens on |
 | `MUSIC_ROOT` | `path.join(__dirname, '..')` | Fallback folder if no scan dirs are configured |
 
 ```bash
@@ -141,7 +141,7 @@ PORT=2600 MUSIC_ROOT=/path/to/music node app.js
 ### Windows Firewall (for network access)
 
 ```
-netsh advfirewall firewall add rule name="AudioNote" dir=in action=allow protocol=TCP localport=3005
+netsh advfirewall firewall add rule name="AudioNote" dir=in action=allow protocol=TCP localport=2600
 ```
 
 ---

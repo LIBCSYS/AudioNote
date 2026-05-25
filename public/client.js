@@ -1,6 +1,8 @@
 'use strict';
 
 const state = { songs: [], currentSong: null, timestamps: [], notedOnly: false };
+const WEB_MODE    = !!window.WEB_MODE;
+const fileHandles = new Map(); // WEB_MODE: songId -> File
 
 const $ = id => document.getElementById(id);
 
@@ -44,6 +46,7 @@ function esc(str) {
 // ── SONG LIST ──────────────────────────────────────────────
 
 async function loadSongs() {
+  if (WEB_MODE) return; // web mode populates via folder picker
   const res = await fetch('/api/songs');
   state.songs = await res.json();
   applyFilters();
@@ -57,7 +60,7 @@ function renderSongList(songs) {
   songCount.textContent = `${songs.length} track${songs.length !== 1 ? 's' : ''}`;
   songList.innerHTML = '';
   if (!songs.length) {
-    const msg = state.notedOnly ? 'No noted tracks yet' : 'No tracks found — click Rescan Library';
+    const msg = state.notedOnly ? 'No noted tracks yet' : (WEB_MODE ? 'Click Choose Folder to load your MP3s' : 'No tracks found — click Rescan Library');
     songList.innerHTML = `<li class="muted" style="padding:12px 16px;font-style:italic">${msg}</li>`;
     return;
   }
@@ -88,7 +91,13 @@ async function selectSong(song) {
   $('np-title').textContent = song.title;
   $('np-meta').textContent  = [song.artist, song.album].filter(Boolean).join(' · ') || 'Unknown';
 
-  audio.src = `/audio/${song.id}`;
+  if (WEB_MODE) {
+    const file = fileHandles.get(song.id);
+    if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+    audio.src = file ? URL.createObjectURL(file) : '';
+  } else {
+    audio.src = `/audio/${song.id}`;
+  }
   audio.load();
   progressBar.value   = 0;
   tCurrent.textContent = '0:00';
@@ -142,6 +151,7 @@ volumeBar.addEventListener('input', () => {
 
 renameBtn.addEventListener('click', () => {
   if (!state.currentSong) return;
+  if (WEB_MODE) return;
   const titleEl  = $('np-title');
   const current  = state.currentSong.title;
   const input    = document.createElement('input');
@@ -193,7 +203,10 @@ renameBtn.addEventListener('click', () => {
 
 deleteBtn.addEventListener('click', async () => {
   if (!state.currentSong) return;
-  if (!confirm(`Remove "${state.currentSong.title}" from your library?\n\nThe file stays on disk. Notes and timestamps are preserved in the database.`)) return;
+  const msg = WEB_MODE
+    ? `Remove "${state.currentSong.title}" from this session?\n\nNotes and timestamps are saved and will return next time you load this folder.`
+    : `Remove "${state.currentSong.title}" from your library?\n\nThe file stays on disk. Notes and timestamps are preserved in the database.`;
+  if (!confirm(msg)) return;
   await fetch(`/api/songs/${state.currentSong.id}`, { method: 'DELETE' });
   state.songs = state.songs.filter(s => s.id !== state.currentSong.id);
   state.currentSong = null;
@@ -336,6 +349,7 @@ notedFilter.addEventListener('click', () => {
 let scanPanelOpen = false;
 
 rescanBtn.addEventListener('click', async () => {
+  if (WEB_MODE) { pickAndScanDirectory(); return; }
   scanPanelOpen = !scanPanelOpen;
   scanPanel.classList.toggle('hidden', !scanPanelOpen);
   rescanBtn.textContent = scanPanelOpen ? '↑ Close' : '↻ Rescan Library';
@@ -436,6 +450,70 @@ async function addFolder() {
 folderAddBtn.addEventListener('click', addFolder);
 folderInput.addEventListener('keydown', e => { if (e.key === 'Enter') addFolder(); });
 
+// ── WEB MODE: FILE SYSTEM ACCESS API ─────────────────────
+
+async function pickAndScanDirectory() {
+  if (!window.showOpenFilePicker) {
+    alert('Your browser does not support file picking.\nTry Chrome or Edge.');
+    return;
+  }
+  let handles;
+  try {
+    handles = await window.showOpenFilePicker({
+      startIn: 'desktop',
+      multiple: true,
+      types: [{ description: 'Audio files', accept: { 'audio/*': ['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.mp4'] } }],
+    });
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error(e);
+    return;
+  }
+
+  rescanBtn.textContent = '↻ Loading...';
+  rescanBtn.disabled = true;
+
+  const pending = [];
+  for (const handle of handles) {
+    const file = await handle.getFile();
+    const duration = await getDuration(file);
+    pending.push({ filepath: `web:${file.name}`, title: file.name.replace(/\.[^.]+$/, ''), artist: '', album: '', duration_sec: duration, _file: file });
+  }
+
+  const res = await fetch('/api/songs/web-upsert', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pending.map(({ _file, ...s }) => s)),
+  });
+  const serverSongs = await res.json();
+
+  for (const ss of serverSongs) {
+    const p = pending.find(s => s.filepath === ss.filepath);
+    if (p) fileHandles.set(ss.id, p._file);
+  }
+
+  // Merge new files into existing list (don't wipe — allow adding more)
+  const existingIds = new Set(state.songs.map(s => s.id));
+  for (const s of serverSongs) {
+    if (!existingIds.has(s.id)) state.songs.push(s);
+    else { const i = state.songs.findIndex(x => x.id === s.id); if (i >= 0) state.songs[i] = s; }
+  }
+  state.songs.sort((a, b) => (a.artist || '').localeCompare(b.artist || '') || a.title.localeCompare(b.title));
+  applyFilters();
+
+  rescanBtn.textContent = `✓ ${handles.length} added`;
+  setTimeout(() => { rescanBtn.textContent = '🎵 Add Files'; rescanBtn.disabled = false; }, 2000);
+}
+
+function getDuration(file) {
+  return new Promise(resolve => {
+    const a = new Audio();
+    const url = URL.createObjectURL(file);
+    a.addEventListener('loadedmetadata', () => { URL.revokeObjectURL(url); resolve(a.duration || 0); });
+    a.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(0); });
+    a.src = url;
+  });
+}
+
 // ── CHATBOT ──────────────────────────────────────────────
 
 const chatFab      = $('chat-fab');
@@ -492,5 +570,11 @@ chatInput.addEventListener('keydown', e => {
 
 // ── INIT ─────────────────────────────────────────────────
 
-loadSongs();
-loadFolders();
+if (WEB_MODE) {
+  rescanBtn.textContent = '🎵 Add Files';
+  scanPanel.classList.add('hidden');
+  renameBtn.classList.add('hidden');
+} else {
+  loadSongs();
+  loadFolders();
+}

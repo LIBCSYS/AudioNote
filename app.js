@@ -6,10 +6,33 @@ const fs      = require('fs');
 const db      = require('./db');
 
 const app        = express();
-const PORT       = process.env.PORT || 3005;
+const PORT       = process.env.PORT || 2600;
 const MUSIC_ROOT = process.env.MUSIC_ROOT || path.join(__dirname, '..');
 
 app.use(express.json());
+
+// Traffic logging — must be before static so every hit is captured
+const insertVisit = db.prepare(
+  'INSERT INTO visits (method, path, status, ip, referrer, ua, ms) VALUES (?, ?, ?, ?, ?, ?, ?)'
+);
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    try {
+      insertVisit.run(
+        req.method,
+        req.path,
+        res.statusCode,
+        req.headers['x-forwarded-for'] || req.ip || '',
+        req.headers['referer'] || req.headers['referrer'] || '',
+        req.headers['user-agent'] || '',
+        Date.now() - start
+      );
+    } catch {}
+  });
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 function scanDir(dir, results = []) {
