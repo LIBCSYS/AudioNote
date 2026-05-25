@@ -71,15 +71,15 @@ Requires Chrome or Edge. Safari does not support the File System Access API.
 ### Install
 
 ```bash
-git clone https://github.com/LIBCSYS/audionote
-cd audionote
+git clone https://github.com/LIBCSYS/AudioNote
+cd AudioNote
 ```
 
 Place the cloned folder **inside** your music directory. AudioNote scans its **parent folder** for MP3 files by default, so the layout should look like this:
 
 ```
 your-music-folder/
-├── audionote/          ← the cloned repo lives here
+├── AudioNote/          ← the cloned repo lives here
 │   ├── app.js
 │   └── ...
 ├── song1.mp3
