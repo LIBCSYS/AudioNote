@@ -144,7 +144,7 @@ app.post('/api/songs/:id/notes', (req, res) => {
   const { note_text } = req.body;
   const exists = db.prepare('SELECT id FROM song_notes WHERE song_id = ?').get(req.params.id);
   if (exists) {
-    db.prepare('UPDATE song_notes SET note_text = ?, updated_at = datetime("now") WHERE song_id = ?')
+    db.prepare("UPDATE song_notes SET note_text = ?, updated_at = datetime('now') WHERE song_id = ?")
       .run(note_text, req.params.id);
   } else {
     db.prepare('INSERT INTO song_notes (song_id, note_text) VALUES (?, ?)').run(req.params.id, note_text);
@@ -300,10 +300,9 @@ app.post('/api/import/csv', (req, res) => {
   const updateSong = db.prepare(
     'UPDATE songs SET title=?, artist=?, album=?, duration_sec=?, deleted_at=NULL WHERE filepath=?'
   );
-  const upsertNote = db.prepare(
-    `INSERT INTO song_notes (song_id, note_text) VALUES (?, ?)
-     ON CONFLICT(song_id) DO UPDATE SET note_text=excluded.note_text, updated_at=datetime('now')`
-  );
+  const getNote    = db.prepare('SELECT id FROM song_notes WHERE song_id = ?');
+  const insertNote = db.prepare('INSERT INTO song_notes (song_id, note_text) VALUES (?, ?)');
+  const updateNote = db.prepare("UPDATE song_notes SET note_text = ?, updated_at = datetime('now') WHERE song_id = ?");
   const hasTs = db.prepare(
     'SELECT id FROM timestamps WHERE song_id=? AND ABS(time_seconds - ?) < 0.5'
   );
@@ -329,7 +328,8 @@ app.post('/api/import/csv', (req, res) => {
     // Collect best note text from any row in this song group
     const noteText = song.rows.map(r => get(r, 'note_text')).find(n => n) || '';
     if (noteText) {
-      upsertNote.run(songId, noteText);
+      if (getNote.get(songId)) updateNote.run(noteText, songId);
+      else insertNote.run(songId, noteText);
       notes_set++;
     }
 
