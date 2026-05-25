@@ -69,7 +69,9 @@
       <a href="https://audionote.je9.us" class="app-title">🎵 AudioNote</a>
       <input type="text" id="search-input" placeholder="Search tracks..." autocomplete="off">
       <button id="noted-filter" class="btn-filter">📝 Noted only</button>
-      <button id="rescan-btn" class="btn-secondary">↻ Rescan Library</button>
+      <button id="rescan-btn" class="btn-secondary">🎵 Add Files</button>
+      <button id="open-file-btn" class="btn-secondary btn-open-file">📁 Play a File</button>
+      <input type="file" id="open-file-input" accept="audio/mpeg,audio/mp4,audio/wav,audio/flac,audio/ogg,audio/aac" multiple style="display:none">
       <a id="export-btn" href="/api/export/csv" class="btn-secondary btn-export">⬇ Export CSV</a>
       <button id="import-btn" class="btn-secondary btn-import">⬆ Import CSV</button>
       <input type="file" id="import-file" accept=".csv,.txt" style="display:none">
@@ -77,20 +79,17 @@
 
     <div id="scan-panel" class="hidden">
       <div class="scan-panel-section">
-        <div class="scan-panel-label">Tracked Folders</div>
-        <ul id="folders-list"></ul>
-      </div>
-      <div class="scan-panel-section">
-        <div class="scan-panel-label">Add a Drive</div>
+        <div class="scan-panel-label">Drives — check to include in scan</div>
         <div id="drives-list"></div>
       </div>
       <div class="scan-panel-section">
-        <div class="scan-panel-label">Custom Path</div>
+        <div class="scan-panel-label">Custom Folder Path</div>
         <div class="folders-add">
           <input type="text" id="folder-input" placeholder="X:\path\to\music" autocomplete="off" spellcheck="false">
           <button id="folder-add-btn" title="Add">+</button>
         </div>
         <div id="folder-error" class="folder-error"></div>
+        <ul id="folders-list"></ul>
       </div>
       <button id="scan-now-btn" class="btn-scan-now">↻ Scan Now</button>
     </div>
@@ -252,7 +251,7 @@
   <footer id="about-footer">
     <span class="about-name">AudioNote</span>
     <span class="about-sep">·</span>
-    <span class="about-version">v0.00.3</span>
+    <span class="about-version">v0.00.4</span>
     <span class="about-sep">·</span>
     <a href="https://theratsasses.com" target="_blank" class="about-brand about-link">A TheRatsAsses Music Release</a>
     <span class="about-sep">·</span>

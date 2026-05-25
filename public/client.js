@@ -33,6 +33,8 @@ const folderInput = $('folder-input');
 const folderAddBtn = $('folder-add-btn');
 const folderError  = $('folder-error');
 const scanNowBtn   = $('scan-now-btn');
+const openFileBtn  = $('open-file-btn');
+const openFileInput = $('open-file-input');
 
 function fmt(s) {
   if (!s || isNaN(s)) return '0:00';
@@ -416,7 +418,7 @@ rescanBtn.addEventListener('click', async () => {
   if (WEB_MODE) { pickAndScanDirectory(); return; }
   scanPanelOpen = !scanPanelOpen;
   scanPanel.classList.toggle('hidden', !scanPanelOpen);
-  rescanBtn.textContent = scanPanelOpen ? '↑ Close' : '↻ Rescan Library';
+  rescanBtn.textContent = scanPanelOpen ? '↑ Close' : '↻ Scan Library';
   if (scanPanelOpen) {
     await loadFolders();
     await loadDrives();
@@ -424,21 +426,62 @@ rescanBtn.addEventListener('click', async () => {
 });
 
 async function loadDrives() {
-  const res    = await fetch('/api/drives');
-  const drives = await res.json();
-  const tracked = (await (await fetch('/api/scan-dirs')).json()).map(d => d.dirpath.replace(/\\/g, '/').toUpperCase());
+  const [drives, scanDirs] = await Promise.all([
+    fetch('/api/drives').then(r => r.json()),
+    fetch('/api/scan-dirs').then(r => r.json()),
+  ]);
   drivesList.innerHTML = '';
+  if (!drives.length) {
+    drivesList.innerHTML = '<p class="drive-empty">No drives detected</p>';
+    return;
+  }
   for (const drive of drives) {
-    const chip = document.createElement('button');
-    chip.className = 'drive-chip';
-    chip.textContent = drive.replace('\\', '');
-    const norm = drive.replace(/\\/g, '/').toUpperCase();
-    if (tracked.some(t => t.startsWith(norm))) chip.classList.add('active');
-    chip.addEventListener('click', async () => {
-      folderInput.value = drive;
-      folderInput.focus();
+    const normDrive = drive.replace(/\\/g, '/').toUpperCase().replace(/\/$/, '');
+    const matched   = scanDirs.find(d =>
+      d.dirpath.replace(/\\/g, '/').toUpperCase().replace(/\/$/, '') === normDrive
+    );
+
+    const row = document.createElement('label');
+    row.className = 'drive-row';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!matched;
+    if (matched) cb.dataset.dirId = matched.id;
+
+    const lbl = document.createElement('span');
+    lbl.className = 'drive-label';
+    lbl.textContent = drive.replace(/\\$/, '');
+
+    row.appendChild(cb);
+    row.appendChild(lbl);
+    drivesList.appendChild(row);
+
+    cb.addEventListener('change', async () => {
+      if (cb.checked) {
+        const r = await fetch('/api/scan-dirs', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ dirpath: drive }),
+        });
+        if (r.ok) {
+          const dir = await r.json();
+          cb.dataset.dirId = dir.id;
+          loadFolders();
+        } else {
+          cb.checked = false;
+          const err = await r.json();
+          folderError.textContent = err.error || 'Could not add drive';
+        }
+      } else {
+        const id = cb.dataset.dirId;
+        if (id) {
+          await fetch(`/api/scan-dirs/${id}`, { method: 'DELETE' });
+          delete cb.dataset.dirId;
+          loadFolders();
+        }
+      }
     });
-    drivesList.appendChild(chip);
   }
 }
 
@@ -644,19 +687,71 @@ chatInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 });
 
+// ── PLAY A FILE (local mode) ──────────────────────────────
+
+if (openFileBtn) {
+  openFileBtn.addEventListener('click', () => openFileInput && openFileInput.click());
+}
+
+if (openFileInput) {
+  openFileInput.addEventListener('change', async () => {
+    const files = Array.from(openFileInput.files || []);
+    if (!files.length) return;
+    openFileInput.value = '';
+
+    for (const file of files) {
+      const blobUrl  = URL.createObjectURL(file);
+      const duration = await getDuration(file);
+      const title    = file.name.replace(/\.[^.]+$/, '');
+
+      // Synthetic entry — not saved to catalog; use negative IDs to avoid collision
+      const song = {
+        id: -(Date.now()),
+        filepath: `local:${file.name}`,
+        title,
+        artist: '',
+        album:  '',
+        duration_sec: duration,
+        has_note: 0,
+        _blobUrl: blobUrl,
+      };
+
+      // Play the first file; subsequent files could be queued in a future feature
+      state.currentSong = song;
+      $('np-title').textContent = title;
+      $('np-meta').textContent  = 'Local file — not in library';
+
+      audio.src = blobUrl;
+      audio.load();
+      audio.play().catch(() => {});
+
+      playerPanel.classList.remove('hidden');
+      emptyState.classList.add('hidden');
+
+      tsList.innerHTML = '<li class="ts-empty muted">Add file to library to save markers</li>';
+      tsCount.textContent = '';
+      noteInput.value = '';
+      noteStatus.textContent = '';
+      break; // play the first selected file
+    }
+  });
+}
+
 // ── INIT ─────────────────────────────────────────────────
 
 if (WEB_MODE) {
   rescanBtn.textContent = '🎵 Add Files';
+  if (openFileBtn) openFileBtn.style.display = 'none';
   scanPanel.classList.add('hidden');
   renameBtn.classList.add('hidden');
   const homeAddBtn = $('home-add-btn');
   if (homeAddBtn) homeAddBtn.addEventListener('click', pickAndScanDirectory);
 } else {
+  rescanBtn.textContent = '↻ Scan Library';
   const homeAddBtn = $('home-add-btn');
   if (homeAddBtn) homeAddBtn.style.display = 'none';
   const homeNote = document.querySelector('.home-browser-note');
-  if (homeNote) homeNote.textContent = 'Click ↻ Rescan Library in the sidebar to load your music';
+  if (homeNote) homeNote.textContent = 'Click ↻ Scan Library or 📁 Play a File to get started';
   loadSongs();
   loadFolders();
 }

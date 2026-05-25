@@ -5,9 +5,16 @@ const path    = require('path');
 const fs      = require('fs');
 const db      = require('./db');
 
+let mm;
+try {
+  mm = require('music-metadata');
+} catch (e) {
+  console.warn('[AudioNote] music-metadata unavailable — files will use filename as title:', e.message);
+}
+
 const app        = express();
 const PORT       = process.env.PORT || 2600;
-const VERSION    = '0.00.3';
+const VERSION    = '0.00.4';
 const MUSIC_ROOT = process.env.MUSIC_ROOT || path.join(__dirname, '..');
 
 app.use(express.json());
@@ -88,7 +95,6 @@ app.delete('/api/scan-dirs/:id', (req, res) => {
 // Rescan all configured directories (falls back to parent dir if none configured)
 app.post('/api/rescan', async (req, res) => {
   try {
-    const mm = require('music-metadata');
     const configuredDirs = db.prepare('SELECT dirpath FROM scan_dirs').all().map(r => r.dirpath);
     const dirsToScan = configuredDirs.length ? configuredDirs : [MUSIC_ROOT];
     const files = [];

@@ -1,6 +1,6 @@
 {
   "name": "audionote",
-  "version": "0.00.3",
+  "version": "0.00.4",
   "description": "Local-first music catalog, annotation, and timestamp marking tool",
   "main": "app.js",
   "engines": {
