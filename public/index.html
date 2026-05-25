@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AudioNote</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <aside id="sidebar">
+    <div class="sidebar-top">
+      <div class="app-title">🎵 AudioNote</div>
+      <input type="text" id="search-input" placeholder="Search tracks..." autocomplete="off">
+      <button id="noted-filter" class="btn-filter">📝 Noted only</button>
+      <button id="rescan-btn" class="btn-secondary">↻ Rescan Library</button>
+    </div>
+
+    <div id="scan-panel" class="hidden">
+      <div class="scan-panel-section">
+        <div class="scan-panel-label">Tracked Folders</div>
+        <ul id="folders-list"></ul>
+      </div>
+      <div class="scan-panel-section">
+        <div class="scan-panel-label">Add a Drive</div>
+        <div id="drives-list"></div>
+      </div>
+      <div class="scan-panel-section">
+        <div class="scan-panel-label">Custom Path</div>
+        <div class="folders-add">
+          <input type="text" id="folder-input" placeholder="X:\path\to\music" autocomplete="off" spellcheck="false">
+          <button id="folder-add-btn" title="Add">+</button>
+        </div>
+        <div id="folder-error" class="folder-error"></div>
+      </div>
+      <button id="scan-now-btn" class="btn-scan-now">↻ Scan Now</button>
+    </div>
+    <div id="song-count" class="song-count"></div>
+    <ul id="song-list"></ul>
+
+  </aside>
+
+  <main id="main">
+
+    <div id="empty-state">
+      <div class="empty-icon">🎵</div>
+      <p>Select a track from the library</p>
+      <p class="muted">or click Rescan Library to find your MP3s</p>
+    </div>
+
+    <div id="player-panel" class="hidden">
+
+      <div class="card" id="now-playing-card">
+        <div id="np-title">—</div>
+        <div id="np-meta">—</div>
+        <audio id="audio" preload="metadata"></audio>
+        <div id="progress-row">
+          <span id="t-current">0:00</span>
+          <input type="range" id="progress" value="0" min="0" max="1000" step="1">
+          <span id="t-total">0:00</span>
+        </div>
+        <div id="controls-row">
+          <button id="play-btn" class="btn-play" title="Play / Pause">▶</button>
+          <div class="volume-row">
+            <span>🔊</span>
+            <input type="range" id="volume" value="80" min="0" max="100" title="Volume">
+          </div>
+        </div>
+      </div>
+
+      <button id="mark-btn" class="btn-mark" title="M key">⏱ Mark This Moment</button>
+      <div class="mark-hint muted">Press <kbd>M</kbd> while playing to drop a marker</div>
+
+      <div class="card" id="timestamps-card">
+        <h3>Timestamps <span id="ts-count" class="badge"></span></h3>
+        <ul id="ts-list">
+          <li class="ts-empty muted">No markers yet</li>
+        </ul>
+      </div>
+
+      <div class="card" id="notes-card">
+        <h3>Song Notes <span id="note-status" class="note-status"></span></h3>
+        <textarea id="note-input" placeholder="Notes about this track..."></textarea>
+      </div>
+
+    </div>
+  </main>
+
+  <footer id="about-footer">
+    <span class="about-name">AudioNote</span>
+    <span class="about-sep">·</span>
+    <span class="about-version">v0.0.00.1</span>
+    <span class="about-sep">·</span>
+    <span class="about-brand">A TheRatsAsses Music Release</span>
+    <span class="about-sep">·</span>
+    <span class="about-dba">dba LibCSystems</span>
+  </footer>
+
+</div>
+<script src="client.js"></script>
+</body>
+</html>

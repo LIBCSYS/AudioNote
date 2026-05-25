@@ -1,0 +1,376 @@
+'use strict';
+
+const state = { songs: [], currentSong: null, timestamps: [], notedOnly: false };
+
+const $ = id => document.getElementById(id);
+
+const audio       = $('audio');
+const playBtn     = $('play-btn');
+const progressBar = $('progress');
+const tCurrent    = $('t-current');
+const tTotal      = $('t-total');
+const volumeBar   = $('volume');
+const markBtn     = $('mark-btn');
+const noteInput   = $('note-input');
+const noteStatus  = $('note-status');
+const tsList      = $('ts-list');
+const tsCount     = $('ts-count');
+const songList    = $('song-list');
+const searchInput = $('search-input');
+const songCount   = $('song-count');
+const playerPanel = $('player-panel');
+const emptyState  = $('empty-state');
+const rescanBtn   = $('rescan-btn');
+const notedFilter = $('noted-filter');
+const scanPanel   = $('scan-panel');
+const foldersList = $('folders-list');
+const drivesList  = $('drives-list');
+const folderInput = $('folder-input');
+const folderAddBtn = $('folder-add-btn');
+const folderError  = $('folder-error');
+const scanNowBtn   = $('scan-now-btn');
+
+function fmt(s) {
+  if (!s || isNaN(s)) return '0:00';
+  return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+}
+
+function esc(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── SONG LIST ──────────────────────────────────────────────
+
+async function loadSongs() {
+  const res = await fetch('/api/songs');
+  state.songs = await res.json();
+  applyFilters();
+}
+
+function visibleSongs() {
+  return state.notedOnly ? state.songs.filter(s => s.has_note) : state.songs;
+}
+
+function renderSongList(songs) {
+  songCount.textContent = `${songs.length} track${songs.length !== 1 ? 's' : ''}`;
+  songList.innerHTML = '';
+  if (!songs.length) {
+    const msg = state.notedOnly ? 'No noted tracks yet' : 'No tracks found — click Rescan Library';
+    songList.innerHTML = `<li class="muted" style="padding:12px 16px;font-style:italic">${msg}</li>`;
+    return;
+  }
+  for (const s of songs) {
+    const li = document.createElement('li');
+    if (state.currentSong?.id === s.id) li.classList.add('active');
+    li.dataset.id = s.id;
+    const meta = [s.artist, s.album].filter(Boolean).join(' · ');
+    const dur  = s.duration_sec ? `<span class="song-duration">${fmt(s.duration_sec)}</span>` : '';
+    li.innerHTML = `
+      <div class="song-item-title">${esc(s.title)}${s.has_note ? '<span class="note-flag">📝</span>' : ''}</div>
+      <div class="song-item-meta">${esc(meta)}${dur}</div>
+    `;
+    li.addEventListener('click', () => selectSong(s));
+    songList.appendChild(li);
+  }
+}
+
+// ── SELECT SONG ────────────────────────────────────────────
+
+async function selectSong(song) {
+  state.currentSong = song;
+
+  document.querySelectorAll('#song-list li').forEach(li =>
+    li.classList.toggle('active', parseInt(li.dataset.id) === song.id)
+  );
+
+  $('np-title').textContent = song.title;
+  $('np-meta').textContent  = [song.artist, song.album].filter(Boolean).join(' · ') || 'Unknown';
+
+  audio.src = `/audio/${song.id}`;
+  audio.load();
+  progressBar.value   = 0;
+  tCurrent.textContent = '0:00';
+  tTotal.textContent   = fmt(song.duration_sec);
+  playBtn.textContent  = '▶';
+
+  playerPanel.classList.remove('hidden');
+  emptyState.classList.add('hidden');
+
+  const [noteRes, tsRes] = await Promise.all([
+    fetch(`/api/songs/${song.id}/notes`),
+    fetch(`/api/songs/${song.id}/timestamps`),
+  ]);
+  const noteData = await noteRes.json();
+  const tsData   = await tsRes.json();
+
+  noteInput.value       = noteData.note_text || '';
+  noteStatus.textContent = '';
+  state.timestamps      = tsData;
+  renderTimestamps();
+}
+
+// ── PLAYBACK ───────────────────────────────────────────────
+
+playBtn.addEventListener('click', () => audio.paused ? audio.play() : audio.pause());
+
+audio.addEventListener('play',  () => { playBtn.textContent = '⏸'; });
+audio.addEventListener('pause', () => { playBtn.textContent = '▶'; });
+audio.addEventListener('ended', () => { playBtn.textContent = '▶'; });
+
+audio.addEventListener('timeupdate', () => {
+  if (audio.duration) {
+    progressBar.value    = (audio.currentTime / audio.duration) * 1000;
+    tCurrent.textContent = fmt(audio.currentTime);
+  }
+});
+
+audio.addEventListener('loadedmetadata', () => {
+  tTotal.textContent = fmt(audio.duration);
+});
+
+progressBar.addEventListener('input', () => {
+  if (audio.duration) audio.currentTime = (progressBar.value / 1000) * audio.duration;
+});
+
+volumeBar.addEventListener('input', () => {
+  audio.volume = volumeBar.value / 100;
+});
+
+// ── MARK TIMESTAMP ────────────────────────────────────────
+
+markBtn.addEventListener('click', async () => {
+  if (!state.currentSong) return;
+
+  // Flush any label currently being typed before we re-render
+  const activeLabel = tsList.querySelector('.ts-label:focus');
+  if (activeLabel && activeLabel.value !== activeLabel.dataset.saved) {
+    await fetch(`/api/timestamps/${activeLabel.dataset.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: activeLabel.value }),
+    });
+  }
+
+  const res = await fetch(`/api/songs/${state.currentSong.id}/timestamps`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ time_seconds: audio.currentTime }),
+  });
+  const ts = await res.json();
+  state.timestamps.push(ts);
+  state.timestamps.sort((a, b) => a.time_seconds - b.time_seconds);
+  renderTimestamps();
+
+  // Auto-focus the label input for this new marker
+  setTimeout(() => {
+    const input = tsList.querySelector(`.ts-label[data-id="${ts.id}"]`);
+    if (input) input.focus();
+  }, 50);
+});
+
+// ── RENDER TIMESTAMPS ────────────────────────────────────
+
+function renderTimestamps() {
+  tsCount.textContent = state.timestamps.length || '';
+  if (!state.timestamps.length) {
+    tsList.innerHTML = '<li class="ts-empty muted">No markers yet — hit Mark This Moment while playing</li>';
+    return;
+  }
+  tsList.innerHTML = '';
+  for (const ts of state.timestamps) {
+    const li = document.createElement('li');
+    li.className = 'ts-item';
+    li.innerHTML = `
+      <span class="ts-time" data-time="${ts.time_seconds}">${fmt(ts.time_seconds)}</span>
+      <input class="ts-label" type="text" data-id="${ts.id}" value="${esc(ts.label)}" placeholder="label this moment...">
+      <button class="ts-del" data-id="${ts.id}" title="Delete">✕</button>
+    `;
+
+    li.querySelector('.ts-time').addEventListener('click', e => {
+      audio.currentTime = parseFloat(e.target.dataset.time);
+    });
+
+    const labelInput = li.querySelector('.ts-label');
+    labelInput.dataset.saved = ts.label;
+    labelInput.addEventListener('input', async e => {
+      await fetch(`/api/timestamps/${e.target.dataset.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ label: e.target.value }),
+      });
+      e.target.dataset.saved = e.target.value;
+    });
+
+    li.querySelector('.ts-del').addEventListener('click', async e => {
+      const id = parseInt(e.target.dataset.id);
+      await fetch(`/api/timestamps/${id}`, { method: 'DELETE' });
+      state.timestamps = state.timestamps.filter(t => t.id !== id);
+      renderTimestamps();
+    });
+
+    tsList.appendChild(li);
+  }
+}
+
+// ── NOTES ────────────────────────────────────────────────
+
+let noteSaveTimer;
+noteInput.addEventListener('input', () => {
+  noteStatus.textContent = 'saving...';
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = setTimeout(async () => {
+    if (!state.currentSong) return;
+    await fetch(`/api/songs/${state.currentSong.id}/notes`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ note_text: noteInput.value }),
+    });
+    noteStatus.textContent = '✓ saved';
+    setTimeout(() => { noteStatus.textContent = ''; }, 2000);
+
+    // Update sidebar flag live
+    const hasNote = noteInput.value.trim().length > 0;
+    const entry = state.songs.find(s => s.id === state.currentSong.id);
+    if (entry) entry.has_note = hasNote ? 1 : 0;
+    const li = songList.querySelector(`li[data-id="${state.currentSong.id}"]`);
+    if (li) {
+      const titleEl = li.querySelector('.song-item-title');
+      const flag = titleEl.querySelector('.note-flag');
+      if (hasNote && !flag) titleEl.insertAdjacentHTML('beforeend', '<span class="note-flag">📝</span>');
+      else if (!hasNote && flag) flag.remove();
+    }
+  }, 800);
+});
+
+// ── SEARCH ───────────────────────────────────────────────
+
+function applyFilters() {
+  const q    = searchInput.value.toLowerCase();
+  let result = visibleSongs();
+  if (q) result = result.filter(s =>
+    s.title.toLowerCase().includes(q) ||
+    (s.artist && s.artist.toLowerCase().includes(q)) ||
+    (s.album  && s.album.toLowerCase().includes(q))
+  );
+  renderSongList(result);
+}
+
+searchInput.addEventListener('input', applyFilters);
+
+// ── NOTED FILTER ─────────────────────────────────────────
+
+notedFilter.addEventListener('click', () => {
+  state.notedOnly = !state.notedOnly;
+  notedFilter.classList.toggle('active', state.notedOnly);
+  notedFilter.textContent = state.notedOnly ? '📝 Showing noted' : '📝 Noted only';
+  applyFilters();
+});
+
+// ── RESCAN PANEL ─────────────────────────────────────────
+
+let scanPanelOpen = false;
+
+rescanBtn.addEventListener('click', async () => {
+  scanPanelOpen = !scanPanelOpen;
+  scanPanel.classList.toggle('hidden', !scanPanelOpen);
+  rescanBtn.textContent = scanPanelOpen ? '↑ Close' : '↻ Rescan Library';
+  if (scanPanelOpen) {
+    await loadFolders();
+    await loadDrives();
+  }
+});
+
+async function loadDrives() {
+  const res    = await fetch('/api/drives');
+  const drives = await res.json();
+  const tracked = (await (await fetch('/api/scan-dirs')).json()).map(d => d.dirpath.replace(/\\/g, '/').toUpperCase());
+  drivesList.innerHTML = '';
+  for (const drive of drives) {
+    const chip = document.createElement('button');
+    chip.className = 'drive-chip';
+    chip.textContent = drive.replace('\\', '');
+    const norm = drive.replace(/\\/g, '/').toUpperCase();
+    if (tracked.some(t => t.startsWith(norm))) chip.classList.add('active');
+    chip.addEventListener('click', async () => {
+      folderInput.value = drive;
+      folderInput.focus();
+    });
+    drivesList.appendChild(chip);
+  }
+}
+
+scanNowBtn.addEventListener('click', async () => {
+  scanNowBtn.textContent = '↻ Scanning...';
+  scanNowBtn.disabled = true;
+  try {
+    const res  = await fetch('/api/rescan', { method: 'POST' });
+    const data = await res.json();
+    state.songs = data.songs;
+    applyFilters();
+    scanNowBtn.textContent = `✓ ${data.added} added, ${data.removed} removed`;
+  } catch {
+    scanNowBtn.textContent = '↻ Scan failed';
+  }
+  setTimeout(() => {
+    scanNowBtn.textContent = '↻ Scan Now';
+    scanNowBtn.disabled = false;
+  }, 2500);
+});
+
+// ── KEYBOARD ─────────────────────────────────────────────
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'KeyM' && state.currentSong) {
+    e.preventDefault();
+    markBtn.click();
+  }
+});
+
+// ── SCAN FOLDERS ─────────────────────────────────────────
+
+async function loadFolders() {
+  const res  = await fetch('/api/scan-dirs');
+  const dirs = await res.json();
+  foldersList.innerHTML = '';
+  if (!dirs.length) {
+    foldersList.innerHTML = '<li style="color:var(--muted);font-size:11px;padding:3px 2px;font-style:italic">None — using default folder</li>';
+    return;
+  }
+  for (const d of dirs) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="folder-path" title="${esc(d.dirpath)}">${esc(d.dirpath)}</span><button class="folder-del" data-id="${d.id}" title="Remove">✕</button>`;
+    li.querySelector('.folder-del').addEventListener('click', async e => {
+      await fetch(`/api/scan-dirs/${e.target.dataset.id}`, { method: 'DELETE' });
+      loadFolders();
+      loadDrives();
+    });
+    foldersList.appendChild(li);
+  }
+}
+
+async function addFolder() {
+  const dirpath = folderInput.value.trim();
+  if (!dirpath) return;
+  folderError.textContent = '';
+  const res = await fetch('/api/scan-dirs', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ dirpath }),
+  });
+  if (res.ok) {
+    folderInput.value = '';
+    loadFolders();
+    loadDrives();
+  } else {
+    const data = await res.json();
+    folderError.textContent = data.error || 'Failed to add folder';
+  }
+}
+
+folderAddBtn.addEventListener('click', addFolder);
+folderInput.addEventListener('keydown', e => { if (e.key === 'Enter') addFolder(); });
+
+// ── INIT ─────────────────────────────────────────────────
+
+loadSongs();
+loadFolders();
