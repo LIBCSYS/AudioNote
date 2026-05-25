@@ -1,7 +1,14 @@
 'use strict';
 
-const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
+
+// node:sqlite is built-in from Node 22.5+; fall back to better-sqlite3 on older versions
+let DatabaseSync;
+try {
+  ({ DatabaseSync } = require('node:sqlite'));
+} catch {
+  DatabaseSync = require('better-sqlite3');
+}
 
 const db = new DatabaseSync(path.join(__dirname, 'audionote.db'));
 

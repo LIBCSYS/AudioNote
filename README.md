@@ -51,7 +51,7 @@ It is not a streaming service. It does not sync to the cloud. It does not requir
 
 ### Requirements
 
-- **Node.js 22.5 or later** — AudioNote uses the built-in `node:sqlite` module (no external database required)
+- **Node.js 14 or later** — On Node 22.5+, AudioNote uses the built-in `node:sqlite` (no extra deps). On older versions it falls back to `better-sqlite3` automatically.
 
 ### Install
 

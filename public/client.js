@@ -436,6 +436,60 @@ async function addFolder() {
 folderAddBtn.addEventListener('click', addFolder);
 folderInput.addEventListener('keydown', e => { if (e.key === 'Enter') addFolder(); });
 
+// ── CHATBOT ──────────────────────────────────────────────
+
+const chatFab      = $('chat-fab');
+const chatPanel    = $('chat-panel');
+const chatClose    = $('chat-close');
+const chatMessages = $('chat-messages');
+const chatInput    = $('chat-input');
+const chatSend     = $('chat-send');
+
+const CHAT_SYSTEM = 'You are AudioNote Assistant — a helpful guide for the AudioNote app (local MP3 catalog, player, and annotation tool). Help users with: playing and organizing music, using timestamp markers, writing song notes, scanning folders, exporting CSV data, and general questions about how AudioNote works. Be concise and friendly.';
+
+chatFab.addEventListener('click', () => {
+  chatPanel.classList.toggle('hidden');
+  if (!chatPanel.classList.contains('hidden')) chatInput.focus();
+});
+chatClose.addEventListener('click', () => chatPanel.classList.add('hidden'));
+
+async function sendChat() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = '';
+
+  appendMsg(text, 'user');
+  const thinking = appendMsg('Thinking…', 'bot thinking');
+
+  try {
+    const res  = await fetch('https://claudeamour.us/claude/chat', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ message: text, system: CHAT_SYSTEM }),
+    });
+    const data = await res.json();
+    thinking.remove();
+    appendMsg(data.reply || data.content || 'No response', 'bot');
+  } catch {
+    thinking.remove();
+    appendMsg('Could not reach the assistant. Please try again.', 'bot');
+  }
+}
+
+function appendMsg(text, classes) {
+  const div = document.createElement('div');
+  div.className = `chat-msg ${classes}`;
+  div.textContent = text;
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  return div;
+}
+
+chatSend.addEventListener('click', sendChat);
+chatInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
 // ── INIT ─────────────────────────────────────────────────
 
 loadSongs();
