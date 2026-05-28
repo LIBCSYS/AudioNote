@@ -669,14 +669,32 @@ async function sendChat() {
     const res  = await fetch('https://claudeamour.us/claude/chat', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ message: text, system: CHAT_SYSTEM }),
+      body:    JSON.stringify({ message: text, site: 'audionote', system: CHAT_SYSTEM }),
     });
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.status);
+      throw new Error(`HTTP ${res.status}: ${err}`);
+    }
     const data = await res.json();
     thinking.remove();
     appendMsg(data.reply || data.content || 'No response', 'bot');
-  } catch {
+    if (data.usage || data.model) {
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'chat-msg bot-meta';
+      metaDiv.style.cssText = 'font-size:.65rem;opacity:.55;padding:1px 0 5px 4px;letter-spacing:.03em;';
+      metaDiv.textContent = [
+        data.model ? data.model.replace('claude-','') : '',
+        data.usage ? data.usage.input_tokens+'in' : '',
+        data.usage ? data.usage.output_tokens+'out' : '',
+        data.est_cost_usd != null ? '$'+data.est_cost_usd.toFixed(4) : ''
+      ].filter(Boolean).join(' · ');
+      chatMessages.appendChild(metaDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+  } catch (err) {
     thinking.remove();
-    appendMsg('Could not reach the assistant. Please try again.', 'bot');
+    console.error('[AudioNote chat]', err);
+    appendMsg(`Error: ${err.message || 'Could not reach the assistant.'}`, 'bot error');
   }
 }
 

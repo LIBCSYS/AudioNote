@@ -67,11 +67,19 @@
   <aside id="sidebar">
     <div class="sidebar-top">
       <a href="https://audionote.je9.us" class="app-title">🎵 AudioNote</a>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:5px;">
+        <a href="https://github.com/LIBCSYS/audionote" target="_blank" rel="noopener"
+           style="display:inline-flex;align-items:center;gap:4px;font-size:.62rem;font-weight:700;color:#4ade80;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);border-radius:999px;padding:2px 8px;text-decoration:none;font-family:monospace;white-space:nowrap;">
+          ⚡ Open Source · MIT
+        </a>
+        <a href="https://je9.us" target="_blank" rel="noopener"
+           style="display:inline-flex;align-items:center;gap:4px;font-size:.62rem;font-weight:600;color:rgba(255,255,255,.5);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:2px 8px;text-decoration:none;font-family:monospace;white-space:nowrap;">
+          🌐 je9.us
+        </a>
+      </div>
       <input type="text" id="search-input" placeholder="Search tracks..." autocomplete="off">
       <button id="noted-filter" class="btn-filter">📝 Noted only</button>
       <button id="rescan-btn" class="btn-secondary">🎵 Add Files</button>
-      <button id="open-file-btn" class="btn-secondary btn-open-file">📁 Play a File</button>
-      <input type="file" id="open-file-input" accept="audio/mpeg,audio/mp4,audio/wav,audio/flac,audio/ogg,audio/aac" multiple style="display:none">
       <a id="export-btn" href="/api/export/csv" class="btn-secondary btn-export">⬇ Export CSV</a>
       <button id="import-btn" class="btn-secondary btn-import">⬆ Import CSV</button>
       <input type="file" id="import-file" accept=".csv,.txt" style="display:none">
@@ -115,7 +123,7 @@
           <a href="https://libcsys.com" target="_blank" class="home-brand-link">LIBCSystems LLC</a>
         </p>
         <button id="home-add-btn" class="home-cta">🎵 Add Files to Get Started</button>
-        <p class="home-browser-note">Chrome &amp; Edge &middot; files never leave your device</p>
+        <p class="home-browser-note">Any modern browser &middot; files never leave your device</p>
       </div>
 
       <div class="home-section">
@@ -197,7 +205,7 @@
                   <code>node app.js</code>
                   <button class="copy-btn" onclick="navigator.clipboard.writeText('node app.js')">Copy</button>
                 </div>
-                <div class="step-detail" style="margin-top:6px">Navigate to <strong>http://localhost:2600</strong> — the scan panel opens automatically. Type your music folder path (e.g. <code>X:\libc_music</code>), click <strong>+</strong>, then click <strong>↻ Scan Now</strong>.</div>
+                <div class="step-detail" style="margin-top:6px">Navigate to <strong>http://localhost:2600</strong> and click <strong>↻ Rescan Library</strong> — AudioNote finds every MP3 in your music folder automatically.</div>
               </div>
             </div>
 
@@ -259,18 +267,15 @@
     <a href="https://theratsasses.com" target="_blank" class="about-brand about-link">A TheRatsAsses Music Release</a>
     <span class="about-sep">·</span>
     <a href="https://libcsys.com" target="_blank" class="about-dba about-link">dba LIBCSystems LLC</a>
+    <span class="about-sep">·</span>
+    <a href="https://github.com/LIBCSYS/audionote" target="_blank" rel="noopener" class="about-link" style="color:#4ade80;font-weight:700;">⚡ Open Source</a>
+    <span class="about-sep">·</span>
+    <span>MIT License — free to copy, modify &amp; redistribute</span>
   </footer>
 
 </div>
-<script src="client.js"></script>
-<script>
-  if (!window.AUDIONOTE_LOADED) {
-    var b = document.createElement('div');
-    b.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:14px 20px;z-index:9999;font-size:14px;font-family:sans-serif;text-align:center';
-    b.innerHTML = '&#9888; <strong>AudioNote failed to start.</strong> Make sure you ran <code style="background:rgba(0,0,0,.3);padding:2px 6px;border-radius:3px">node app.js</code> from inside the <strong>AudioNote</strong> folder, then refresh this page.';
-    document.body.appendChild(b);
-  }
-</script>
+<script>window.WEB_MODE = true;</script>
+<script src="client.js" defer></script>
 <script>
   function toggleInstall() {
     const body = document.getElementById('install-body');
@@ -293,6 +298,8 @@
     <button id="chat-send">↑</button>
   </div>
 </div>
+
+<script>(function(){fetch('https://je9.us/track.php',{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({visit_token:`${Date.now()}-${Math.random().toString(36).slice(2,10)}`,origin_host:location.hostname,path:location.pathname,referrer:document.referrer,language:navigator.language,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,screen:`${innerWidth}x${innerHeight}`}),keepalive:true}).catch(()=>{})})();</script>
 
 </body>
 </html>

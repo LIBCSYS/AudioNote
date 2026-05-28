@@ -523,6 +523,11 @@ app.post('/api/songs/web-upsert', (req, res) => {
   res.json(result);
 });
 
+
+// Catch-all 404
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(__dirname, 'public', 'error.html'));
+});
 app.listen(PORT, '0.0.0.0', () => {
   const os   = require('os');
   const nets = Object.values(os.networkInterfaces()).flat().filter(n => n.family === 'IPv4' && !n.internal);

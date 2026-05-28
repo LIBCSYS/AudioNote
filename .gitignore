@@ -1,3 +1,7 @@
 node_modules/
 audionote.db
 *.log
+audionote.db-shm
+audionote.db-wal
+demo-music/
+sample-music/
