@@ -236,16 +236,26 @@ deleteBtn.addEventListener('click', async () => {
 
 // ── MARK TIMESTAMP ────────────────────────────────────────
 
+let _labelSaveTimer = null;
+
 markBtn.addEventListener('click', async () => {
   if (!state.currentSong) return;
 
-  // Flush any label currently being typed before we re-render
+  // Cancel any pending debounced save and flush immediately
+  clearTimeout(_labelSaveTimer);
   const activeLabel = tsList.querySelector('.ts-label:focus');
-  if (activeLabel && activeLabel.value !== activeLabel.dataset.saved) {
-    await fetch(`/api/timestamps/${activeLabel.dataset.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: activeLabel.value }),
-    });
+  if (activeLabel) {
+    const _flushId  = parseInt(activeLabel.dataset.id);
+    const _flushVal = activeLabel.value;
+    const _flushTs  = state.timestamps.find(t => t.id === _flushId);
+    if (_flushTs) _flushTs.label = _flushVal;
+    if (_flushVal !== activeLabel.dataset.saved) {
+      await fetch(`/api/timestamps/${_flushId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: _flushVal }),
+      });
+      activeLabel.dataset.saved = _flushVal;
+    }
   }
 
   const res = await fetch(`/api/songs/${state.currentSong.id}/timestamps`, {
@@ -289,13 +299,22 @@ function renderTimestamps() {
 
     const labelInput = li.querySelector('.ts-label');
     labelInput.dataset.saved = ts.label;
-    labelInput.addEventListener('input', async e => {
-      await fetch(`/api/timestamps/${e.target.dataset.id}`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ label: e.target.value }),
-      });
-      e.target.dataset.saved = e.target.value;
+    labelInput.addEventListener('input', e => {
+      const _id  = parseInt(e.target.dataset.id);
+      const _val = e.target.value;
+      // Keep in-memory state in sync so re-renders preserve typed labels
+      const _ts = state.timestamps.find(t => t.id === _id);
+      if (_ts) _ts.label = _val;
+      // Debounce the PATCH to avoid race conditions from rapid typing
+      clearTimeout(_labelSaveTimer);
+      _labelSaveTimer = setTimeout(async () => {
+        await fetch(`/api/timestamps/${_id}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ label: _val }),
+        });
+        e.target.dataset.saved = _val;
+      }, 350);
     });
 
     li.querySelector('.ts-del').addEventListener('click', async e => {
