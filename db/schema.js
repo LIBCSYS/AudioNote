@@ -63,6 +63,21 @@ module.exports = function schema(dialect, T) {
          created_at datetime DEFAULT current_timestamp(),
          PRIMARY KEY (id), KEY idx_song (song_id)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+      // v1.5.0 — one row per finished whisper run. Segments kept as JSON text
+      // (start/end/text) so a UI can render clickable, seekable lines.
+      `CREATE TABLE IF NOT EXISTS ${T('transcripts')} (
+         id int(10) unsigned NOT NULL AUTO_INCREMENT,
+         song_id int(10) unsigned DEFAULT NULL,
+         engine varchar(40) DEFAULT 'whisper',
+         model varchar(40) DEFAULT NULL,
+         language varchar(20) DEFAULT NULL,
+         text mediumtext DEFAULT NULL,
+         segments_json mediumtext DEFAULT NULL,
+         seconds_taken decimal(10,2) DEFAULT NULL,
+         created_at datetime DEFAULT current_timestamp(),
+         PRIMARY KEY (id), KEY idx_song (song_id)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     ];
   }
 
@@ -102,6 +117,13 @@ module.exports = function schema(dialect, T) {
        song_id INTEGER NOT NULL REFERENCES ${T('songs')}(id) ON DELETE CASCADE,
        time_seconds REAL NOT NULL,
        label TEXT DEFAULT '', category TEXT DEFAULT '',
+       created_at TEXT DEFAULT (datetime('now')))`,
+
+    `CREATE TABLE IF NOT EXISTS ${T('transcripts')} (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       song_id INTEGER NOT NULL REFERENCES ${T('songs')}(id) ON DELETE CASCADE,
+       engine TEXT DEFAULT 'whisper', model TEXT, language TEXT,
+       text TEXT, segments_json TEXT, seconds_taken REAL,
        created_at TEXT DEFAULT (datetime('now')))`,
   ];
 };

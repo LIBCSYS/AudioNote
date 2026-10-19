@@ -11,3 +11,6 @@ package-lock.json
 # environment (per-deployment, never committed)
 .env
 audionote.db*
+
+# whisper raw output (per-deployment)
+transcripts/

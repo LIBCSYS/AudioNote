@@ -3,6 +3,30 @@
 All notable changes to AudioNote are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] — 2026-10-18
+
+### Added
+- **Local transcription (opt-in).** `POST /api/transcribe` (`song_id` or a
+  `filepath` inside a catalogued folder) queues a run of the openai-whisper CLI
+  on the host; poll `GET /api/transcribe/:job`; past runs at
+  `GET /api/songs/:id/transcripts`. Results land in a new `transcripts` table
+  with timestamped segments. Off unless `TRANSCRIBE_ENABLED=true` — whisper is
+  CPU-heavy and must never be exposed by a public deployment by accident.
+  One job runs at a time; models limited to `WHISPER_MODELS` (default
+  tiny,base,small).
+- `/api/config` reports `transcribe` (models + default) or `false`.
+
+### Fixed
+- **Library went blank after "Scan Now".** `/api/rescan` returned the result of
+  `db.run()` (`{insertId, changes}`) as `songs`; it now returns the rows.
+- `YTDLP_BIN`, `YTDLP_PROXY` and `URL_CACHE` set in `.env` were ignored by
+  `app.js` (it read `process.env` with a hardcoded `/usr/local/bin/yt-dlp`
+  default). They now come from `config.js`; the default is `yt-dlp` on `PATH`.
+
+### Dependencies
+- Already at newest minor/patch: express 4.22.3, music-metadata 11.16.1.
+  Majors (express 5, music-metadata 12) deliberately not taken. `npm audit`: 0.
+
 ## [1.3.3] — 2026-07-05
 
 ### Changed

@@ -63,6 +63,17 @@ module.exports = {
   YTDLP_BIN:   process.env.YTDLP_BIN  || 'yt-dlp',
   YTDLP_PROXY: process.env.YTDLP_PROXY || '',
 
+  // --- transcription (local whisper) ---
+  // OFF by default: whisper is CPU-heavy and runs on whatever host serves the
+  // app, so a public deployment must never get it by accident. Turn it on only
+  // where the box and the audio both belong to the operator (e.g. a laptop).
+  TRANSCRIBE_ENABLED: bool(process.env.TRANSCRIBE_ENABLED, false),
+  WHISPER_BIN:     process.env.WHISPER_BIN || 'whisper',      // openai-whisper CLI
+  WHISPER_MODEL:   process.env.WHISPER_MODEL || 'base',       // default when a request names none
+  WHISPER_MODELS:  (process.env.WHISPER_MODELS || 'tiny,base,small').split(',').map(s => s.trim()).filter(Boolean),
+  WHISPER_TIMEOUT_MS: parseInt(process.env.WHISPER_TIMEOUT_MS || String(30 * 60 * 1000), 10),
+  TRANSCRIPT_DIR:  process.env.TRANSCRIPT_DIR || '',          // whisper's raw JSON lands here; default <app>/transcripts
+
   // --- deployment-specific presentation (was hard-coded personalisation) ---
   WEB_MODE:      bool(process.env.WEB_MODE, false),      // browser-side file picking
   CHAT_ENABLED:  bool(process.env.CHAT_ENABLED, false),  // "Ask AudioNote" assistant

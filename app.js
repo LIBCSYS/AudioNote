@@ -40,9 +40,11 @@ const MIME_BY_EXT = {
 // Any http(s) URL with audio — YouTube, SoundCloud, Bandcamp, a bare .mp3,
 // anything yt-dlp supports — is downloaded/transcoded to mp3 in url-cache/
 // and catalogued as a normal song, so the existing player + notes just work.
-const YTDLP_BIN   = process.env.YTDLP_BIN || '/usr/local/bin/yt-dlp';
-const YTDLP_PROXY = process.env.YTDLP_PROXY || '';  // e.g. socks5://127.0.0.1:1080 (Tailscale->trixie) to dodge datacenter-IP bot-walls
-const URL_CACHE   = process.env.URL_CACHE || path.join(__dirname, 'url-cache');
+// Resolved through config.js so a .env value is honoured; the old hardcoded
+// /usr/local/bin default broke on Homebrew-on-Apple-Silicon (/opt/homebrew/bin).
+const YTDLP_BIN   = cfg.YTDLP_BIN;
+const YTDLP_PROXY = cfg.YTDLP_PROXY;  // e.g. socks5://127.0.0.1:1080 (Tailscale->trixie) to dodge datacenter-IP bot-walls
+const URL_CACHE   = cfg.URL_CACHE || path.join(__dirname, 'url-cache');
 try { fs.mkdirSync(URL_CACHE, { recursive: true }); } catch {}
 
 app.use(express.json({ limit: '10mb' }));
@@ -172,7 +174,9 @@ app.post('/api/rescan', async (req, res) => {
       await db.run('UPDATE an_songs SET deleted_at = NOW() WHERE id = ?', [s.id]);
     }
 
-    const songs = await db.run(SONGS_QUERY);
+    // db.all, not db.run: run() returns {insertId, changes}, which the client
+    // then assigned to state.songs and the library went blank after every scan.
+    const songs = await db.all(SONGS_QUERY);
     res.json({ added, removed: removed.length, total: songs.length, songs });
   } catch (err) {
     console.error('[rescan error]', err);
@@ -684,6 +688,147 @@ app.post('/api/songs/from-url', async (req, res) => {
   }
 });
 
+// ── Transcription (local whisper) — v1.5.0 ───────────────
+// Lyrics / spoken notes from a catalogued file, using the openai-whisper CLI on
+// THIS machine. Nothing leaves the box. Gated by TRANSCRIBE_ENABLED (off by
+// default) because a public deployment would hand strangers a CPU-burning
+// endpoint.
+//
+// Same async shape as from-url: POST returns a job id at once, the caller polls
+// GET /api/transcribe/:job. A 10-minute jam takes minutes on CPU, far longer
+// than any sane HTTP request.
+const TRANSCRIPT_DIR = cfg.TRANSCRIPT_DIR || path.join(__dirname, 'transcripts');
+const txJobs  = new Map();   // job id -> state; finished jobs are kept so late polls still see the result
+const txQueue = [];          // job ids waiting; ONE whisper at a time — two in parallel just thrash the CPU
+let   txBusy  = false;
+
+// A path is transcribable only if it really lives under a folder this app was
+// told to catalogue. realpath first, so "../" and symlinks can't walk out.
+async function allowedRoots() {
+  const rows  = await db.all('SELECT dirpath FROM an_scan_dirs');
+  const roots = rows.map(r => r.dirpath);
+  if (cfg.MUSIC_ROOT) roots.push(cfg.MUSIC_ROOT);
+  return roots.map(r => { try { return fs.realpathSync(r); } catch { return null; } }).filter(Boolean);
+}
+function isUnder(file, root) {
+  const rel = path.relative(root, file);
+  return rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+// Find the catalogue row for a file, creating it if the scan hasn't reached it
+// yet — so a caller can transcribe any file in the library by path without
+// forcing a full rescan of 2k files first.
+async function songForFile(fp) {
+  let s = await db.get('SELECT id FROM an_songs WHERE filepath = ?', [fp]);
+  if (s) return s.id;
+  await db.run('INSERT IGNORE INTO an_songs (filepath, title) VALUES (?, ?)',
+               [fp, path.basename(fp, path.extname(fp))]);
+  s = await db.get('SELECT id FROM an_songs WHERE filepath = ?', [fp]);
+  return s && s.id;
+}
+
+function runWhisper(job) {
+  return new Promise((resolve, reject) => {
+    const outDir = path.join(TRANSCRIPT_DIR, job.id);
+    fs.mkdirSync(outDir, { recursive: true });
+    // --fp16 False: the CPU path warns and falls back anyway; saying so keeps the log clean.
+    const args = [job.filepath, '--model', job.model, '--output_format', 'json',
+                  '--output_dir', outDir, '--fp16', 'False', '--verbose', 'False'];
+    if (job.language) args.push('--language', job.language);
+    const proc = spawn(cfg.WHISPER_BIN, args, { timeout: cfg.WHISPER_TIMEOUT_MS });
+    let err = '';
+    proc.stderr.on('data', d => { err = (err + d).slice(-4000); }); // tail only; whisper is chatty
+    proc.on('error', e => reject(new Error(`whisper failed to start: ${e.message}`)));
+    proc.on('close', code => {
+      if (code !== 0) return reject(new Error(err.trim().split('\n').pop() || `whisper exited ${code}`));
+      // whisper names the output after the input's basename, extension swapped for .json
+      const out = path.join(outDir, path.basename(job.filepath, path.extname(job.filepath)) + '.json');
+      try { resolve(JSON.parse(fs.readFileSync(out, 'utf8'))); }
+      catch (e) { reject(new Error(`whisper output unreadable: ${e.message}`)); }
+    });
+  });
+}
+
+async function pumpTranscribeQueue() {
+  if (txBusy) return;
+  const id = txQueue.shift();
+  if (!id) return;
+  const job = txJobs.get(id);
+  txBusy = true;
+  job.status = 'running';
+  job.startedAt = Date.now();
+  try {
+    const r = await runWhisper(job);
+    const segments = (r.segments || []).map(s => ({
+      start: Math.round(s.start * 100) / 100,
+      end:   Math.round(s.end * 100) / 100,
+      text:  String(s.text || '').trim(),
+    })).filter(s => s.text);
+    const text = String(r.text || '').trim();
+    const secs = (Date.now() - job.startedAt) / 1000;
+    const ins  = await db.run(
+      'INSERT INTO an_transcripts (song_id, engine, model, language, text, segments_json, seconds_taken) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [job.song_id, 'whisper', job.model, r.language || job.language || null, text, JSON.stringify(segments), secs]
+    );
+    Object.assign(job, { status: 'done', transcript_id: ins.insertId, language: r.language || null,
+                         text, segments, seconds_taken: secs, finishedAt: Date.now() });
+  } catch (e) {
+    console.error('[AudioNote] transcribe error:', e.message);
+    Object.assign(job, { status: 'error', error: e.message.slice(0, 300), finishedAt: Date.now() });
+  } finally {
+    txBusy = false;
+    setImmediate(pumpTranscribeQueue);
+  }
+}
+
+app.post('/api/transcribe', async (req, res) => {
+  if (!cfg.TRANSCRIBE_ENABLED) return res.status(403).json({ error: 'Transcription is disabled on this server' });
+  try {
+    const { song_id, filepath, language } = req.body || {};
+    const model = (req.body && req.body.model) || cfg.WHISPER_MODEL;
+    if (!cfg.WHISPER_MODELS.includes(model)) return res.status(400).json({ error: `model must be one of: ${cfg.WHISPER_MODELS.join(', ')}` });
+    if (language && !/^[a-z]{2,3}$/i.test(language)) return res.status(400).json({ error: 'language must be a 2–3 letter code' });
+
+    let fp;
+    if (song_id) {
+      const s = await db.get('SELECT filepath FROM an_songs WHERE id = ? AND deleted_at IS NULL', [song_id]);
+      if (!s) return res.status(404).json({ error: 'No such song' });
+      fp = s.filepath;
+    } else if (filepath) {
+      fp = String(filepath);
+    } else {
+      return res.status(400).json({ error: 'song_id or filepath required' });
+    }
+    try { fp = fs.realpathSync(fp); } catch { return res.status(404).json({ error: 'File not found' }); }
+    if (!AUDIO_EXTS.has(path.extname(fp).toLowerCase())) return res.status(400).json({ error: 'Not an audio file' });
+    // url-cache files came in through from-url and are fair game too.
+    const roots = [...await allowedRoots(), fs.realpathSync(URL_CACHE)];
+    if (!roots.some(r => isUnder(fp, r))) return res.status(403).json({ error: 'File is outside the catalogued folders' });
+
+    const sid = song_id ? Number(song_id) : await songForFile(fp);
+    const id  = crypto.randomBytes(8).toString('hex');
+    txJobs.set(id, { id, status: 'queued', song_id: sid, filepath: fp, model,
+                     language: language ? language.toLowerCase() : null, queuedAt: Date.now() });
+    txQueue.push(id);
+    setImmediate(pumpTranscribeQueue);
+    res.json({ job: id, status: 'queued', song_id: sid, position: txQueue.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/transcribe/:job', (req, res) => {
+  const j = txJobs.get(req.params.job);
+  if (!j) return res.status(404).json({ error: 'No such job (the server may have restarted)' });
+  const { filepath, ...pub } = j;   // the client already knows the file; don't echo absolute paths
+  res.json({ ...pub, position: j.status === 'queued' ? txQueue.indexOf(j.id) + 1 : 0 });
+});
+
+app.get('/api/songs/:id/transcripts', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM an_transcripts WHERE song_id = ? ORDER BY created_at DESC, id DESC', [req.params.id]);
+    res.json(rows.map(r => ({ ...r, segments: JSON.parse(r.segments_json || '[]'), segments_json: undefined })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // App version — single source of truth for the UI footer
 app.get('/api/version', (req, res) => res.json({ version: VERSION }));
 
@@ -698,6 +843,7 @@ app.get('/api/config', (req, res) => res.json({
   siteBadgeUrl: cfg.SITE_BADGE_URL,
   brandName:    cfg.BRAND_NAME,
   brandTagline: cfg.BRAND_TAGLINE,
+  transcribe:   cfg.TRANSCRIBE_ENABLED ? { models: cfg.WHISPER_MODELS, defaultModel: cfg.WHISPER_MODEL } : false,
 }));
 
 // Catch-all 404
@@ -716,7 +862,10 @@ db.init()
       const ip   = nets.length ? nets[0].address : 'YOUR_IP';
       console.log(`\n${cfg.BRAND_NAME} v${VERSION}  [db=${db.dialect} prefix="${cfg.TABLE_PREFIX}"]`);
       console.log(`Local     : http://localhost:${PORT}`);
-      console.log(`Network   : http://${ip}:${PORT}`);
+      // Only advertise a LAN address when we actually listen on one; a loopback
+      // bind printing "Network: 192.168…" sent people chasing a URL that can't work.
+      if (BIND !== '127.0.0.1' && BIND !== 'localhost' && BIND !== '::1') console.log(`Network   : http://${ip}:${PORT}`);
+      else console.log(`Bound     : ${BIND} (loopback only)`);
       console.log(`Music root: ${MUSIC_ROOT}\n`);
     });
   })

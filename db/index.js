@@ -33,7 +33,7 @@ function T(name) {
  * Rewrite that logical prefix to whatever this deployment actually uses, so the
  * query text never has to be edited per environment.
  */
-const TABLES = ['songs', 'song_notes', 'timestamps', 'scan_dirs', 'visits'];
+const TABLES = ['songs', 'song_notes', 'timestamps', 'scan_dirs', 'visits', 'transcripts'];
 const TABLE_RE = new RegExp(`\\ban_(${TABLES.join('|')})\\b`, 'g');
 
 function rewrite(sql) {
